@@ -10,8 +10,11 @@ A local control service for managing the account portfolio.
 - It does not publish content. For content, `published` only **records and confirms** that a
   publication happened elsewhere, and has to be confirmed explicitly with `confirm: true`.
 - It keeps all data in memory, not in a database. Everything is lost when the process stops.
-- It reuses the domain logic of `@persona/core`, `@persona/persona-engine`, `@persona/publisher`
-  and `@persona/analytics`.
+- It reuses the domain logic of `@persona/core`, `@persona/persona-engine`, `@persona/publisher`,
+  `@persona/analytics` and `@persona/account-intake`.
+- Accounts can be brought in through a manual intake: a request is submitted with a confirmation of
+  ownership, approved by a reviewer and then completed, which adds the account record. Nothing is
+  registered on a platform.
 
 ## Run
 
@@ -69,6 +72,11 @@ number generator are injected, which keeps them deterministic.
 
 - **Manual confirmation.** `review -> warming` for accounts and `scheduled -> published` for content
   need `confirm: true`; otherwise the answer is `409 manual_confirmation_required`.
+- **Intake.** Submitting needs `ownershipConfirmed: true` (otherwise `400`). Approving without
+  `confirmOwnership: true` is a `409 manual_confirmation_required`. Completing creates the account in
+  the `connected` status, records a `state_changed` event (`source: 'account-intake'`) and answers
+  `409 duplicate_intake` when a request for the same platform and external account is already
+  completed.
 - **Status changes of accounts** are checked by the state machine of `@persona/core` and recorded as
   a `state_changed` event with `source: 'control-api'`.
 - **Plans are cached per account and date** by the persona engine for the life of the process, so a
@@ -92,5 +100,6 @@ Every error has one shape and never contains a stack trace:
 | `not_found`                    | 404     | The addressed entity or route does not exist                                                           |
 | `invalid_transition`           | 409     | The status change is not allowed                                                                       |
 | `manual_confirmation_required` | 409     | The change has to be confirmed with `confirm: true`                                                    |
+| `duplicate_intake`             | 409     | A completed intake request already exists for the same account                                         |
 | `domain_error`                 | 409/400 | A domain rule refuses the change, e.g. a content item that is not ready (`details` lists the problems) |
 | `internal_error`               | 500     | Unexpected failure; the cause is only written to the log                                               |

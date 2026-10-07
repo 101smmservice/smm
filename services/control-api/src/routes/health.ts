@@ -64,6 +64,39 @@ export const ROUTES: readonly RouteDescription[] = [
     description: 'Record that publishing a scheduled item failed',
   },
 
+  { method: 'POST', path: '/intake/requests', description: 'Create an intake request (draft)' },
+  {
+    method: 'GET',
+    path: '/intake/requests',
+    description: 'List intake requests, optionally by status',
+  },
+  { method: 'GET', path: '/intake/requests/:requestId', description: 'Get an intake request' },
+  {
+    method: 'POST',
+    path: '/intake/requests/:requestId/submit',
+    description: 'Submit for review with a confirmation of ownership',
+  },
+  {
+    method: 'POST',
+    path: '/intake/requests/:requestId/approve',
+    description: 'Approve after the reviewer confirmed ownership (needs confirmOwnership: true)',
+  },
+  {
+    method: 'POST',
+    path: '/intake/requests/:requestId/reject',
+    description: 'Reject with a reason',
+  },
+  {
+    method: 'POST',
+    path: '/intake/requests/:requestId/reopen',
+    description: 'Return a rejected request to draft',
+  },
+  {
+    method: 'POST',
+    path: '/intake/requests/:requestId/complete',
+    description: 'Create the account record for an approved request',
+  },
+
   { method: 'POST', path: '/events', description: 'Record a lifecycle event' },
   { method: 'GET', path: '/events', description: 'List events with filters' },
 

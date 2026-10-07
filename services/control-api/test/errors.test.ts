@@ -1,3 +1,10 @@
+import {
+  DuplicateIntakeError,
+  IntakeError,
+  IntakeNotFoundError,
+  IntakeValidationError,
+  InvalidIntakeTransitionError,
+} from '@persona/account-intake';
 import { DomainError, InvalidStateTransitionError, ValidationError } from '@persona/core';
 import {
   ContentNotFoundError,
@@ -23,6 +30,7 @@ describe('mapError', () => {
       'not_found',
       'invalid_transition',
       'manual_confirmation_required',
+      'duplicate_intake',
       'domain_error',
       'internal_error',
     ]);
@@ -104,6 +112,52 @@ describe('mapError', () => {
     expect(mapped.statusCode).toBe(404);
     expect(mapped.body.error.code).toBe('not_found');
     expect(mapped.body.error.details).toEqual([{ entity: 'content', id: 'c1' }]);
+  });
+
+  it('maps an unknown intake request to 404', () => {
+    const mapped = mapError(new IntakeNotFoundError('r1'));
+
+    expect(mapped.statusCode).toBe(404);
+    expect(mapped.body.error.code).toBe('not_found');
+    expect(mapped.body.error.details).toEqual([{ entity: 'intake_request', id: 'r1' }]);
+  });
+
+  it('maps a forbidden intake status change to 409 invalid_transition', () => {
+    const mapped = mapError(new InvalidIntakeTransitionError('draft', 'completed'));
+
+    expect(mapped.statusCode).toBe(409);
+    expect(mapped.body.error.code).toBe('invalid_transition');
+    expect(mapped.body.error.details).toEqual([{ from: 'draft', to: 'completed' }]);
+  });
+
+  it('maps an intake validation error to 400, naming the field', () => {
+    const mapped = mapError(new IntakeValidationError('reason is required', 'reason'));
+
+    expect(mapped.statusCode).toBe(400);
+    expect(mapped.body.error.code).toBe('validation_error');
+    expect(mapped.body.error.details).toEqual([
+      { path: ['reason'], message: 'reason is required' },
+    ]);
+    expect(mapError(new IntakeValidationError('bad')).body.error.details).toEqual([
+      { path: [], message: 'bad' },
+    ]);
+  });
+
+  it('maps a duplicate intake request to 409 duplicate_intake', () => {
+    const mapped = mapError(new DuplicateIntakeError('telegram', 'ext_1', 'req_1'));
+
+    expect(mapped.statusCode).toBe(409);
+    expect(mapped.body.error.code).toBe('duplicate_intake');
+    expect(mapped.body.error.details).toEqual([
+      { platform: 'telegram', externalAccountId: 'ext_1', existingRequestId: 'req_1' },
+    ]);
+  });
+
+  it('maps any other intake error to 400 domain_error', () => {
+    const mapped = mapError(new IntakeError('rule broken'));
+
+    expect(mapped.statusCode).toBe(400);
+    expect(mapped.body.error.code).toBe('domain_error');
   });
 
   it('maps any other domain error to 400 domain_error', () => {

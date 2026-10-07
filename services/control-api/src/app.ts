@@ -9,6 +9,7 @@ import { registerAnalyticsRoutes } from './routes/analytics.js';
 import { registerContentRoutes } from './routes/content.js';
 import { registerEventRoutes } from './routes/events.js';
 import { registerHealthRoutes } from './routes/health.js';
+import { registerIntakeRoutes } from './routes/intake.js';
 import { registerPersonaRoutes } from './routes/personas.js';
 
 export interface ControlApiOptions {
@@ -58,6 +59,7 @@ export async function buildApp(options: ControlApiOptions = {}): Promise<Fastify
   registerPersonaRoutes(app, container);
   registerContentRoutes(app, container);
   registerEventRoutes(app, container);
+  registerIntakeRoutes(app, container);
   registerAnalyticsRoutes(app, container);
 
   return app;

@@ -8,7 +8,7 @@ monorepo.
 
 ## Current status
 
-Five packages and one service are being developed at the moment:
+Six packages and one service are being developed at the moment:
 
 - [`packages/core`](packages/core) (`@persona/core`) — pure domain logic and the foundation for all
   other modules: domain types (`Account`, `Persona`, `ActivityPolicy`, `DailyPlan`, …), the account
@@ -25,9 +25,12 @@ Five packages and one service are being developed at the moment:
 - [`packages/publisher`](packages/publisher) (`@persona/publisher`) — content pipeline: planning
   and the record of publications. It publishes nothing itself; the `published` status confirms a
   publication.
+- [`packages/account-intake`](packages/account-intake) (`@persona/account-intake`) — manual intake of
+  accounts into the system: a request is submitted with a confirmation of ownership, reviewed, and
+  only then turned into an account record. It registers nothing on any platform.
 - [`services/control-api`](services/control-api) (`@persona/control-api`) — a local service for
-  managing the account portfolio: accounts, personas, manual status changes, policies and daily
-  plans, the content pipeline, events and the analytics snapshot. It keeps data in memory and
+  managing the account portfolio: accounts, manual account intake, personas, manual status changes,
+  policies and daily plans, the content pipeline, events and the analytics snapshot. It keeps data in memory and
   performs no action on any platform.
 
 Activity policies are configuration: see [`config/policies.yaml`](config/policies.yaml).
@@ -59,6 +62,7 @@ packages/
   behavior/        # @persona/behavior — action sequences within a session
   analytics/       # @persona/analytics — lifecycle and portfolio metrics
   publisher/       # @persona/publisher — content pipeline, planning and publication records
+  account-intake/  # @persona/account-intake — manual account intake
 services/
   control-api/     # @persona/control-api — local portfolio management service (Fastify)
 ```

@@ -1,3 +1,9 @@
+import {
+  DuplicateIntakeError,
+  IntakeNotFoundError,
+  IntakeValidationError,
+  InvalidIntakeTransitionError,
+} from '@persona/account-intake';
 import { DomainError, InvalidStateTransitionError, ValidationError } from '@persona/core';
 import {
   ContentNotFoundError,
@@ -11,6 +17,7 @@ export const API_ERROR_CODES = [
   'not_found',
   'invalid_transition',
   'manual_confirmation_required',
+  'duplicate_intake',
   'domain_error',
   'internal_error',
 ] as const;
@@ -88,6 +95,28 @@ export function mapError(error: unknown): MappedError {
   }
   if (error instanceof ContentValidationError) {
     return mapped(409, 'domain_error', error.message, [...error.issues]);
+  }
+  if (error instanceof IntakeNotFoundError) {
+    return mapped(404, 'not_found', error.message, [
+      { entity: 'intake_request', id: error.requestId },
+    ]);
+  }
+  if (error instanceof InvalidIntakeTransitionError) {
+    return mapped(409, 'invalid_transition', error.message, [{ from: error.from, to: error.to }]);
+  }
+  if (error instanceof IntakeValidationError) {
+    return mapped(400, 'validation_error', error.message, [
+      { path: error.field === undefined ? [] : [error.field], message: error.message },
+    ]);
+  }
+  if (error instanceof DuplicateIntakeError) {
+    return mapped(409, 'duplicate_intake', error.message, [
+      {
+        platform: error.platform,
+        externalAccountId: error.externalAccountId,
+        existingRequestId: error.existingRequestId,
+      },
+    ]);
   }
   if (error instanceof ValidationError) {
     return mapped(400, 'validation_error', error.message, [

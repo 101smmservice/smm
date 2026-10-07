@@ -1,3 +1,8 @@
+import {
+  InMemoryIntakeRepository,
+  IntakeService,
+  type IntakeRepository,
+} from '@persona/account-intake';
 import type { IPersonaEngine, ActivityPolicy } from '@persona/core';
 import { PersonaEngine, StaticPolicyProvider, defaultRandom } from '@persona/persona-engine';
 import {
@@ -22,6 +27,8 @@ export interface ControlApiContainer {
   personaEngine: IPersonaEngine;
   contentPipeline: ContentPipeline;
   contentRepository: ContentRepository;
+  intakeRepository: IntakeRepository;
+  intakeService: IntakeService;
   clock: { now(): Date };
 }
 
@@ -40,6 +47,7 @@ export function createContainer(options: CreateContainerOptions): ControlApiCont
   const personas = new InMemoryPersonaRepository();
   const events = new InMemoryLifecycleEventStore();
   const contentRepository = new InMemoryContentRepository();
+  const intakeRepository = new InMemoryIntakeRepository();
 
   return {
     accounts,
@@ -54,6 +62,14 @@ export function createContainer(options: CreateContainerOptions): ControlApiCont
     }),
     contentPipeline: new ContentPipeline(contentRepository, { clock }),
     contentRepository,
+    intakeRepository,
+    intakeService: new IntakeService({
+      repository: intakeRepository,
+      accounts,
+      personas,
+      events,
+      clock,
+    }),
     clock,
   };
 }
