@@ -1,0 +1,68 @@
+onboarding:
+  stage: onboarding
+  maxSessionMinutes: 5
+  sessionsPerDay: [1, 2]
+  actions:
+    view:
+      maxPerDay: 20
+      probabilityPerEncounter: 1.0
+    like:
+      maxPerDay: 0
+      probabilityPerEncounter: 0
+    follow:
+      maxPerDay: 0
+      probabilityPerEncounter: 0
+    post:
+      maxPerDay: 0
+      probabilityPerEncounter: 0
+    comment:
+      maxPerDay: 0
+      probabilityPerEncounter: 0
+  minIntervalMinutes: [2, 5]
+  skipDayProbability: 0
+
+warming_week_1:
+  stage: warming
+  maxSessionMinutes: 10
+  sessionsPerDay: [1, 2]
+  actions:
+    view:
+      maxPerDay: 30
+      probabilityPerEncounter: 1.0
+    like:
+      maxPerDay: 5
+      probabilityPerEncounter: 0.08
+    follow:
+      maxPerDay: 2
+      probabilityPerEncounter: 0.03
+    post:
+      maxPerDay: 0
+      probabilityPerEncounter: 0
+    comment:
+      maxPerDay: 0
+      probabilityPerEncounter: 0
+  minIntervalMinutes: [3, 8]
+  skipDayProbability: 0.1
+
+active:
+  stage: active
+  maxSessionMinutes: 30
+  sessionsPerDay: [2, 4]
+  actions:
+    view:
+      maxPerDay: 100
+      probabilityPerEncounter: 1.0
+    like:
+      maxPerDay: 25
+      probabilityPerEncounter: 0.15
+    follow:
+      maxPerDay: 8
+      probabilityPerEncounter: 0.06
+    post:
+      maxPerDay: 2
+      probabilityPerEncounter: 0.5
+    comment:
+      maxPerDay: 5
+      probabilityPerEncounter: 0.1
+  minIntervalMinutes: [2, 10]
+  skipDayProbability: 0.05

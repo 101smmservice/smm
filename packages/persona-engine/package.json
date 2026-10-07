@@ -1,8 +1,8 @@
 {
-  "name": "@persona/core",
+  "name": "@persona/persona-engine",
   "version": "0.0.0",
   "private": true,
-  "description": "Persona core: domain model, account lifecycle state machine, events and storage contracts",
+  "description": "Persona engine: activity policies, daily plans and action budgets",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -24,6 +24,10 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint ."
+  },
+  "dependencies": {
+    "@persona/core": "workspace:*",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

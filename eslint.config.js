@@ -20,5 +20,11 @@ export default defineConfig(
     files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
     extends: [tseslint.configs.disableTypeChecked],
   },
+  {
+    rules: {
+      // Methods that implement a Promise-returning contract may legitimately do synchronous work.
+      '@typescript-eslint/require-await': 'off',
+    },
+  },
   prettier,
 );
