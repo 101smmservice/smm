@@ -8,7 +8,7 @@ monorepo.
 
 ## Current status
 
-Four packages are being developed at the moment:
+Five packages are being developed at the moment:
 
 - [`packages/core`](packages/core) (`@persona/core`) — pure domain logic and the foundation for all
   other modules: domain types (`Account`, `Persona`, `ActivityPolicy`, `DailyPlan`, …), the account
@@ -22,6 +22,9 @@ Four packages are being developed at the moment:
 - [`packages/analytics`](packages/analytics) (`@persona/analytics`) — lifecycle and portfolio
   metrics: status summary, transition matrix, restriction frequency, action failure rate and cohort
   survival, computed over in-memory data.
+- [`packages/publisher`](packages/publisher) (`@persona/publisher`) — content pipeline: planning
+  and the record of publications. It publishes nothing itself; the `published` status confirms a
+  publication.
 
 Activity policies are configuration: see [`config/policies.yaml`](config/policies.yaml).
 
@@ -51,6 +54,7 @@ packages/
   persona-engine/  # @persona/persona-engine — policies, daily plans, action budgets
   behavior/        # @persona/behavior — action sequences within a session
   analytics/       # @persona/analytics — lifecycle and portfolio metrics
+  publisher/       # @persona/publisher — content pipeline, planning and publication records
 ```
 
 Workspaces are declared in `pnpm-workspace.yaml` (`packages/*`, `services/*`). Project rules live in
