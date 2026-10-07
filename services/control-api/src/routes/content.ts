@@ -1,4 +1,8 @@
-import { requiresManualConfirmation, type ContentItem } from '@persona/publisher';
+import {
+  compareByCreation,
+  requiresManualConfirmation,
+  type ContentItem,
+} from '@persona/publisher';
 import type { FastifyInstance } from 'fastify';
 
 import type { ControlApiContainer } from '../container.js';
@@ -11,6 +15,7 @@ import {
   contentPlanParams,
   contentPlanQuery,
   createContentBody,
+  listContentQuery,
   markFailedBody,
   transitionContentBody,
 } from '../schemas/content.js';
@@ -47,6 +52,22 @@ export function registerContentRoutes(app: FastifyInstance, container: ControlAp
     });
 
     return reply.code(201).send(item);
+  });
+
+  app.get('/content', async (request) => {
+    const query = parseRequest('query', listContentQuery, request.query);
+
+    const accountIds =
+      query.accountId === undefined
+        ? (await container.accounts.list()).map((account) => account.id)
+        : [query.accountId];
+    const groups = await Promise.all(
+      accountIds.map((id) => container.contentRepository.findByAccountId(id)),
+    );
+    return groups
+      .flat()
+      .filter((item) => query.status === undefined || item.status === query.status)
+      .sort(compareByCreation);
   });
 
   app.get('/content/:contentId', async (request) => {

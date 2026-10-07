@@ -31,7 +31,8 @@ Six packages and one service are being developed at the moment:
 - [`services/control-api`](services/control-api) (`@persona/control-api`) — a local service for
   managing the account portfolio: accounts, manual account intake, personas, manual status changes,
   policies and daily plans, the content pipeline, events and the analytics snapshot. It keeps data in memory and
-  performs no action on any platform.
+  performs no action on any platform. It also serves a local web dashboard (`/dashboard/`, static
+  files, no build step, for local development only); see its README, section «Веб-дашборд».
 
 Activity policies are configuration: see [`config/policies.yaml`](config/policies.yaml).
 
@@ -64,7 +65,7 @@ packages/
   publisher/       # @persona/publisher — content pipeline, planning and publication records
   account-intake/  # @persona/account-intake — manual account intake
 services/
-  control-api/     # @persona/control-api — local portfolio management service (Fastify)
+  control-api/     # @persona/control-api — local portfolio management service (Fastify) and web dashboard
 ```
 
 Workspaces are declared in `pnpm-workspace.yaml` (`packages/*`, `services/*`). Project rules live in

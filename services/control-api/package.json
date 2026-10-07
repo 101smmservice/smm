@@ -13,7 +13,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "public"
   ],
   "engines": {
     "node": ">=20"
@@ -28,6 +29,7 @@
     "start": "node dist/server.js"
   },
   "dependencies": {
+    "@fastify/static": "^10.1.5",
     "@persona/account-intake": "workspace:*",
     "@persona/analytics": "workspace:*",
     "@persona/core": "workspace:*",

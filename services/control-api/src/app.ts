@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 
 import { loadPolicies } from './config.js';
 import { createContainer } from './container.js';
+import { registerDashboard } from './dashboard.js';
 import { mapError } from './errors.js';
 import { registerAccountRoutes } from './routes/accounts.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
@@ -61,6 +62,7 @@ export async function buildApp(options: ControlApiOptions = {}): Promise<Fastify
   registerEventRoutes(app, container);
   registerIntakeRoutes(app, container);
   registerAnalyticsRoutes(app, container);
+  await registerDashboard(app);
 
   return app;
 }

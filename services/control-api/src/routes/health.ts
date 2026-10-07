@@ -13,8 +13,14 @@ export interface RouteDescription {
 /** Every route the service exposes. `GET /` reports this list, and a test keeps it honest. */
 export const ROUTES: readonly RouteDescription[] = [
   { method: 'GET', path: '/health', description: 'Liveness check' },
-  { method: 'GET', path: '/', description: 'Service description and route list' },
-
+  { method: 'GET', path: '/api', description: 'Service description and route list' },
+  { method: 'GET', path: '/', description: 'Redirects to the web dashboard' },
+  { method: 'GET', path: '/dashboard', description: 'Redirects to /dashboard/' },
+  {
+    method: 'GET',
+    path: '/dashboard/*',
+    description: 'Local web dashboard (static files; development only, no authentication)',
+  },
   { method: 'POST', path: '/accounts', description: 'Create an account in the connected status' },
   { method: 'GET', path: '/accounts', description: 'List accounts, optionally by status' },
   { method: 'GET', path: '/accounts/:accountId', description: 'Get an account' },
@@ -46,6 +52,11 @@ export const ROUTES: readonly RouteDescription[] = [
   { method: 'GET', path: '/personas/:personaId', description: 'Get a persona' },
   { method: 'PATCH', path: '/personas/:personaId', description: 'Update fields of a persona' },
 
+  {
+    method: 'GET',
+    path: '/content',
+    description: 'List content items, optional ?accountId=, ?status=',
+  },
   { method: 'POST', path: '/content', description: 'Create a content draft' },
   { method: 'GET', path: '/content/:contentId', description: 'Get a content item' },
   {
@@ -116,7 +127,7 @@ export function registerHealthRoutes(app: FastifyInstance, container: ControlApi
     uptimeSeconds: Math.max(0, Math.floor((container.clock.now().getTime() - startedAt) / 1000)),
   }));
 
-  app.get('/', () => ({
+  app.get('/api', () => ({
     service: SERVICE_NAME,
     description:
       'Local control service for the account portfolio. It keeps its data in memory, performs no ' +

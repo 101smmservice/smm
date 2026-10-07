@@ -30,6 +30,45 @@ Activity policies are read from `config/policies.yaml`. If that file is missing 
 with no policies (every account then has the empty policy); a file that exists but is invalid stops
 the start.
 
+## Веб-дашборд
+
+Сервис отдаёт локальный веб-дашборд — страницу для работы с портфелем аккаунтов вручную. Это
+статические файлы (`public/index.html`, `styles.css`, `app.js`) на чистом JavaScript: без сборки,
+фреймворков и внешних ресурсов. Дашборд обращается к тому же REST API, что описан ниже, и ничего
+не делает на внешних платформах.
+
+Как запустить:
+
+```bash
+pnpm --filter @persona/control-api dev
+```
+
+Затем открыть <http://127.0.0.1:3000/dashboard/>. Адреса `/` и `/dashboard` перенаправляют на
+`/dashboard/`. Тот же дашборд доступен и после `pnpm build` через
+`pnpm --filter @persona/control-api start` (каталог `public` входит в пакет сервиса).
+
+Вкладки:
+
+| Вкладка   | Что есть                                                                                                                                                               |
+| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Обзор     | Число аккаунтов, персон, контента и событий; аккаунты по статусам; краткий аналитический снимок                                                                        |
+| Аккаунты  | Таблица и форма создания; карточка аккаунта: смена статуса, назначение персоны, политика, план на день, проверка разрешения действия                                   |
+| Персоны   | Таблица, форма создания (темы через запятую, окно активности) и карточка                                                                                               |
+| Контент   | Таблица с фильтрами, форма создания черновика, карточка, переходы между статусами, запись публикации (`published`) и ошибки (`failed`), план контента аккаунта на дату |
+| Аналитика | Снимок `/analytics/snapshot` в виде карточек и таблиц                                                                                                                  |
+
+Ошибки API (`400`, `404`, `409`) показываются с `error.message` и `error.details`. Если сервис
+отвечает `409 manual_confirmation_required`, дашборд спрашивает подтверждение и повторяет запрос с
+`confirm: true`; подтверждение публикации всегда требует явного согласия оператора.
+
+**Только для локальной разработки.** У дашборда нет авторизации, поэтому сервис нельзя открывать
+наружу: по умолчанию он слушает только `127.0.0.1`, и `HOST` не стоит менять на публичный адрес.
+Страница отдаётся с `Content-Security-Policy: default-src 'self'`, данные API выводятся только как
+текст, а не как разметка.
+
+Для списка контента в дашборд добавлен маршрут `GET /content` (`?accountId=`, `?status=`).
+Маршрут `GET /api` возвращает описание сервиса и список маршрутов — раньше это был `GET /`.
+
 ## Test
 
 ```bash
@@ -41,11 +80,14 @@ number generator are injected, which keeps them deterministic.
 
 ## Routes
 
-`GET /` returns this list.
+`GET /api` returns this list. `GET /` redirects to the web dashboard.
 
 | Method  | Path                                     | Purpose                                                     |
 | ------- | ---------------------------------------- | ----------------------------------------------------------- |
 | `GET`   | `/health`                                | Liveness check                                              |
+| `GET`   | `/api`                                   | Service description and this list of routes                 |
+| `GET`   | `/`, `/dashboard`                        | Redirect to the web dashboard                               |
+| `GET`   | `/dashboard/*`                           | Web dashboard (static files, development only)              |
 | `POST`  | `/accounts`                              | Create an account (status `connected`)                      |
 | `GET`   | `/accounts`                              | List accounts, optional `?status=`                          |
 | `GET`   | `/accounts/:accountId`                   | Get an account                                              |
@@ -59,6 +101,7 @@ number generator are injected, which keeps them deterministic.
 | `GET`   | `/personas`                              | List personas                                               |
 | `GET`   | `/personas/:personaId`                   | Get a persona                                               |
 | `PATCH` | `/personas/:personaId`                   | Update some fields of a persona                             |
+| `GET`   | `/content`                               | List content, optional `?accountId=`, `?status=`            |
 | `POST`  | `/content`                               | Create a content draft                                      |
 | `GET`   | `/content/:contentId`                    | Get a content item                                          |
 | `POST`  | `/content/:contentId/transition`         | Move a content item to another status                       |

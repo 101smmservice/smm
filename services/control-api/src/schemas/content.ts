@@ -43,5 +43,10 @@ export const markFailedBody = z.strictObject({
 
 export const contentPlanQuery = z.strictObject({ date: dateString });
 
+export const listContentQuery = z.strictObject({
+  accountId: idString.optional(),
+  status: z.enum(CONTENT_STATUSES).optional(),
+});
+
 export type CreateContentBody = z.infer<typeof createContentBody>;
 export type TransitionContentBody = z.infer<typeof transitionContentBody>;

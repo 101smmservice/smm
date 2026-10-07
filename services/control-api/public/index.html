@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Портфель аккаунтов — локальная панель</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <h1>Портфель аккаунтов</h1>
+        <span class="topbar-note">локальная панель для разработки</span>
+      </header>
+      <nav id="nav" class="tabs" aria-label="Разделы">
+        <a href="#/overview" data-route="overview">Обзор</a>
+        <a href="#/accounts" data-route="accounts">Аккаунты</a>
+        <a href="#/personas" data-route="personas">Персоны</a>
+        <a href="#/content" data-route="content">Контент</a>
+        <a href="#/analytics" data-route="analytics">Аналитика</a>
+      </nav>
+      <main id="view" class="view" aria-live="polite">
+        <p class="muted">Загрузка…</p>
+      </main>
+      <footer class="footer">
+        Без авторизации. Панель предназначена только для локальной работы — не открывайте к ней
+        доступ извне.
+      </footer>
+      <noscript><p class="notice notice-error">Для работы панели нужен JavaScript.</p></noscript>
+    </div>
+  </body>
+</html>
