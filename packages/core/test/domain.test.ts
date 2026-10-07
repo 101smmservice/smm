@@ -4,7 +4,9 @@ import {
   createLifecycleEvent,
   DomainError,
   InvalidStateTransitionError,
+  isPlatform,
   LIFECYCLE_EVENT_TYPES,
+  PLATFORMS,
   ValidationError,
   type LifecycleEventType,
 } from '../src/index.js';
@@ -120,5 +122,19 @@ describe('domain errors', () => {
 
     expect(transition).toBeInstanceOf(DomainError);
     expect(transition.name).toBe('InvalidStateTransitionError');
+  });
+});
+
+describe('platforms', () => {
+  it('lists the supported platforms', () => {
+    expect([...PLATFORMS]).toEqual(['instagram', 'tiktok', 'x', 'telegram']);
+  });
+
+  it.each(PLATFORMS)('recognises %s', (platform) => {
+    expect(isPlatform(platform)).toBe(true);
+  });
+
+  it.each(['', 'facebook', 'Instagram', null, undefined, 1])('rejects %j', (value) => {
+    expect(isPlatform(value)).toBe(false);
   });
 });
