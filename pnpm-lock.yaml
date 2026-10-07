@@ -153,6 +153,9 @@ importers:
       '@persona/persona-engine':
         specifier: workspace:*
         version: link:../persona-engine
+      '@persona/publisher':
+        specifier: workspace:*
+        version: link:../publisher
     devDependencies:
       '@types/node':
         specifier: ^20.19.43

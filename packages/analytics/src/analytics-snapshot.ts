@@ -3,6 +3,7 @@ import type { Account, LifecycleEvent } from '@persona/core';
 import { calculateActionFailureMetrics } from './action-failure-metrics.js';
 import { calculateCohortSurvival } from './cohort-survival.js';
 import { toIsoTimestamp } from './dates.js';
+import { calculatePublicationMetrics } from './publication-metrics.js';
 import { calculateRestrictionFrequency } from './restriction-frequency.js';
 import { summarizeAccounts } from './summarize-accounts.js';
 import { buildTransitionMatrix } from './transition-matrix.js';
@@ -11,7 +12,7 @@ import type { AnalyticsSnapshot, DateRange } from './types.js';
 export interface AnalyticsSnapshotOptions {
   /** The moment the snapshot is taken at. Defaults to the current time. */
   now?: Date;
-  /** Limits restriction and action-failure metrics to these dates (inclusive). */
+  /** Limits restriction, action-failure and publication metrics to these dates (inclusive). */
   range?: DateRange;
   /** Ages, in days, reported by the cohort survival metric. */
   survivalDays?: number[];
@@ -34,6 +35,7 @@ export function createAnalyticsSnapshot(
     transitionMatrix: buildTransitionMatrix(events),
     restrictionFrequency: calculateRestrictionFrequency(events, options.range),
     actionFailureMetrics: calculateActionFailureMetrics(events, options.range),
+    publicationMetrics: calculatePublicationMetrics(events, options.range),
     cohortSurvival: calculateCohortSurvival(accounts, { now, days: options.survivalDays }),
   };
 }

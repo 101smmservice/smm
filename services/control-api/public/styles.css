@@ -733,3 +733,25 @@ td.heat-none {
 .sim-details {
   margin-bottom: 14px;
 }
+
+/* What the simulator did */
+
+.sim-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 7px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--info-bg);
+  color: var(--info-text);
+}
+
+.hbar-fill.s-published {
+  background: var(--ok-bar);
+}
+
+.hbar-fill.s-failed {
+  background: var(--bad-bar);
+}

@@ -2,6 +2,7 @@ export * from './action-failure-metrics.js';
 export * from './analytics-snapshot.js';
 export * from './cohort-survival.js';
 export * from './dates.js';
+export * from './publication-metrics.js';
 export * from './restriction-frequency.js';
 export * from './summarize-accounts.js';
 export * from './transition-matrix.js';

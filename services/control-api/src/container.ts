@@ -63,12 +63,14 @@ export function createContainer(options: CreateContainerOptions): ControlApiCont
     clock,
   });
 
+  const contentPipeline = new ContentPipeline(contentRepository, { clock });
+
   return {
     accounts,
     personas,
     events,
     personaEngine,
-    contentPipeline: new ContentPipeline(contentRepository, { clock }),
+    contentPipeline,
     contentRepository,
     intakeRepository,
     intakeService: new IntakeService({
@@ -84,6 +86,7 @@ export function createContainer(options: CreateContainerOptions): ControlApiCont
       events,
       personaEngine,
       behaviorEngine: new BehaviorEngine({ rng }),
+      contentPipeline,
       clock,
       rng,
       probabilities: options.simulatorProbabilities,

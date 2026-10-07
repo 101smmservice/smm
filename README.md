@@ -30,7 +30,9 @@ Seven packages and one service are being developed at the moment:
   only then turned into an account record. It registers nothing on any platform.
 - [`packages/simulator`](packages/simulator) (`@persona/simulator`) — a simulator of the activity
   of the account portfolio for development and demonstration: it generates lifecycle events in
-  memory from the daily plans and action sequences. It performs no action on any platform.
+  memory from the daily plans and action sequences and, given a content pipeline, "publishes" the
+  content scheduled for the simulated day (only a status change and an event). It performs no
+  action on any platform.
 - [`services/control-api`](services/control-api) (`@persona/control-api`) — a local service for
   managing the account portfolio: accounts, manual account intake, personas, manual status changes,
   policies and daily plans, the content pipeline, events and the analytics snapshot. It keeps data in memory and

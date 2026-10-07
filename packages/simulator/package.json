@@ -28,7 +28,8 @@
   "dependencies": {
     "@persona/behavior": "workspace:*",
     "@persona/core": "workspace:*",
-    "@persona/persona-engine": "workspace:*"
+    "@persona/persona-engine": "workspace:*",
+    "@persona/publisher": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

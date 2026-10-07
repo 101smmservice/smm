@@ -6,6 +6,7 @@ import type {
   LifecycleEventStore,
   PersonaRepository,
 } from '@persona/core';
+import type { ContentPipeline } from '@persona/publisher';
 
 export interface SimulatorConfig {
   /** How many simulated milliseconds pass per real millisecond. Default 60 (1 second = 1 minute). */
@@ -27,6 +28,10 @@ export interface SimulatorStatus {
   eventsGenerated: number;
   /** The message of the last error that happened inside a tick, if any. */
   lastError: string | null;
+  /** Publications of scheduled content tried since the last `start`; 0 without a content pipeline. */
+  publicationsAttempted: number;
+  publicationsSucceeded: number;
+  publicationsFailed: number;
 }
 
 /**
@@ -48,6 +53,11 @@ export interface SimulatorProbabilities {
   reviewResolved: number;
   /** Share of resolved reviews that end in `dead`; the rest return to `warming`. */
   reviewDeadShare: number;
+  /**
+   * Per publication attempt of scheduled content: the content moves to `published`; otherwise to
+   * `failed`. Default 0.9. Optional, so that objects written before it existed stay valid.
+   */
+  publicationSuccess?: number;
 }
 
 /** `AccountRepository` cannot list accounts, which the simulator needs to know whom to process. */
@@ -67,4 +77,9 @@ export interface SimulatorDependencies {
   rng?: () => number;
   /** Overrides of the default chances. */
   probabilities?: Partial<SimulatorProbabilities>;
+  /**
+   * When given, the simulator also publishes the content that the accounts have scheduled for the
+   * simulated day. Without it the simulator behaves as it did before content was supported.
+   */
+  contentPipeline?: ContentPipeline;
 }

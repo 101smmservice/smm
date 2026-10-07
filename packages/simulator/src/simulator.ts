@@ -31,10 +31,16 @@ const MAX_TICK_SPAN_MS = 31 * MS_PER_DAY;
 
 const SOURCE = 'simulator';
 
+/** Prefix of the made-up identifier a simulated publication gets as `externalId`. */
+export const SIMULATED_EXTERNAL_ID_PREFIX = 'sim-post-';
+
+/** The `failureReason` of content whose simulated publication failed. */
+export const SIMULATED_PUBLICATION_FAILURE_REASON = 'simulated_publication_error';
+
 export const DEFAULT_SPEED = 60;
 export const DEFAULT_TICK_INTERVAL_MS = 1000;
 
-export const DEFAULT_PROBABILITIES: Readonly<SimulatorProbabilities> = Object.freeze({
+export const DEFAULT_PROBABILITIES: Readonly<Required<SimulatorProbabilities>> = Object.freeze({
   actionFailure: 0.05,
   restriction: 0.005,
   warmingToActive: 0.2,
@@ -42,10 +48,18 @@ export const DEFAULT_PROBABILITIES: Readonly<SimulatorProbabilities> = Object.fr
   limitedToReview: 0.3,
   reviewResolved: 0.2,
   reviewDeadShare: 0.25,
+  publicationSuccess: 0.9,
 });
 
 /** Labels of simulated restrictions. They only describe the generated event. */
 const RESTRICTION_REASONS = ['temporary_limit', 'daily_limit_reached', 'review_required'] as const;
+
+interface PublicationRecord {
+  attempts: number;
+  outcome: 'published' | 'failed' | 'error';
+  /** The `updatedAt` of the item when it was tried; tells whether it was changed since. */
+  updatedAt: string;
+}
 
 interface SessionState {
   readonly sessionId: string;
@@ -71,9 +85,15 @@ export class PortfolioSimulator {
   private readonly deps: SimulatorDependencies;
   private readonly clock: { now(): Date };
   private readonly rng: () => number;
-  private readonly probabilities: SimulatorProbabilities;
+  private readonly probabilities: Required<SimulatorProbabilities>;
   /** Sessions that were started, by `accountId|date|startAt`, so none is reported twice. */
   private readonly sessions = new Map<string, SessionState>();
+  /**
+   * What became of the publication of a content item, by content id. An item that was published is
+   * never tried again, and neither is one that could not be moved until it has been changed. One
+   * that failed is tried again only if someone schedules it anew.
+   */
+  private readonly publications = new Map<string, PublicationRecord>();
 
   private timer: ReturnType<typeof setInterval> | null = null;
   private running = false;
@@ -85,6 +105,9 @@ export class PortfolioSimulator {
   private tickCount = 0;
   private eventsGenerated = 0;
   private lastError: string | null = null;
+  private publicationsAttempted = 0;
+  private publicationsSucceeded = 0;
+  private publicationsFailed = 0;
   private inFlight: Promise<void> | null = null;
 
   constructor(deps: SimulatorDependencies) {
@@ -113,6 +136,10 @@ export class PortfolioSimulator {
     await this.inFlight;
 
     this.sessions.clear();
+    this.publications.clear();
+    this.publicationsAttempted = 0;
+    this.publicationsSucceeded = 0;
+    this.publicationsFailed = 0;
     this.speed = speed;
     this.tickIntervalMs = tickIntervalMs;
     this.maxTicks = maxTicks;
@@ -151,6 +178,9 @@ export class PortfolioSimulator {
       tickIntervalMs: this.tickIntervalMs,
       eventsGenerated: this.eventsGenerated,
       lastError: this.lastError,
+      publicationsAttempted: this.publicationsAttempted,
+      publicationsSucceeded: this.publicationsSucceeded,
+      publicationsFailed: this.publicationsFailed,
     };
   }
 
@@ -230,7 +260,7 @@ export class PortfolioSimulator {
           continue;
         }
         for (const slot of plan.sessions) {
-          this.advanceSession(plan, slot, to, events);
+          await this.advanceSession(plan, slot, to, events);
         }
       }
     }
@@ -247,12 +277,12 @@ export class PortfolioSimulator {
   }
 
   /** Reports what happened in the session up to `to`: its start, its actions, and its end. */
-  private advanceSession(
+  private async advanceSession(
     plan: DailyPlan,
     slot: SessionSlot,
     to: number,
     events: LifecycleEvent[],
-  ): void {
+  ): Promise<void> {
     const startMs = Date.parse(slot.startAt);
     // Sessions that began before the simulation did, or that have not begun yet, are not reported.
     if (Number.isNaN(startMs) || startMs <= this.startedMs || startMs > to) {
@@ -311,6 +341,11 @@ export class PortfolioSimulator {
           reason: pickRandom(RESTRICTION_REASONS, this.rng) ?? 'unspecified',
         });
       }
+
+      // The content planned for the day goes out right after the first action of a session.
+      if (state.nextAction === 1) {
+        await this.publishScheduledContent(plan.accountId, state.sessionId, at, events);
+      }
     }
 
     if (!state.ended && state.nextAction >= state.actions.length && state.endMs <= to) {
@@ -319,6 +354,77 @@ export class PortfolioSimulator {
         sessionId: state.sessionId,
         performed: state.performed,
         failed: state.failed,
+      });
+    }
+  }
+
+  /**
+   * Tries to publish the content the account has scheduled for the simulated day of `atMs`. A
+   * publication is only a domain event and a change of the status of the content item: nothing is
+   * sent anywhere.
+   */
+  private async publishScheduledContent(
+    accountId: string,
+    sessionId: string,
+    atMs: number,
+    events: LifecycleEvent[],
+  ): Promise<void> {
+    const pipeline = this.deps.contentPipeline;
+    if (pipeline === undefined) {
+      return;
+    }
+
+    const at = new Date(atMs);
+    const date = at.toISOString().slice(0, 10);
+    for (const contentId of (await pipeline.planForDate(accountId, date)).itemIds) {
+      const item = await pipeline.getItem(contentId);
+      if (
+        item?.status !== 'scheduled' ||
+        item.accountId !== accountId ||
+        item.plannedDate !== date
+      ) {
+        continue;
+      }
+      const previous = this.publications.get(contentId);
+      if (
+        previous?.outcome === 'published' ||
+        (previous?.outcome === 'error' && previous.updatedAt === item.updatedAt)
+      ) {
+        continue;
+      }
+
+      this.publicationsAttempted += 1;
+      const succeeded = shouldOccur(this.probabilities.publicationSuccess, this.rng);
+      const externalId = `${SIMULATED_EXTERNAL_ID_PREFIX}${contentId}`;
+      const remember = (outcome: PublicationRecord['outcome']): void => {
+        this.publications.set(contentId, {
+          attempts: (previous?.attempts ?? 0) + 1,
+          outcome,
+          updatedAt: item.updatedAt,
+        });
+      };
+      try {
+        if (succeeded) {
+          await pipeline.markPublished(contentId, { at, externalId });
+          this.publicationsSucceeded += 1;
+          remember('published');
+        } else {
+          await pipeline.markFailed(contentId, SIMULATED_PUBLICATION_FAILURE_REASON, { at });
+          this.publicationsFailed += 1;
+          remember('failed');
+        }
+      } catch (error) {
+        // The item stays as it is, and is not tried again until it changes.
+        this.lastError = describeError(error);
+        remember('error');
+        continue;
+      }
+
+      this.record(events, accountId, succeeded ? 'action_performed' : 'action_failed', atMs, {
+        action: 'post',
+        contentId,
+        sessionId,
+        ...(succeeded ? { externalId } : { reason: SIMULATED_PUBLICATION_FAILURE_REASON }),
       });
     }
   }
@@ -420,7 +526,7 @@ function resolveConfig(config: SimulatorConfig): {
 
 function resolveProbabilities(
   overrides: Partial<SimulatorProbabilities> | undefined,
-): SimulatorProbabilities {
+): Required<SimulatorProbabilities> {
   const probabilities = { ...DEFAULT_PROBABILITIES, ...overrides };
   for (const [name, value] of Object.entries(probabilities)) {
     if (typeof value !== 'number' || Number.isNaN(value) || value < 0 || value > 1) {

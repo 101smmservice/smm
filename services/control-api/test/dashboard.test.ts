@@ -166,6 +166,28 @@ describe('page content', () => {
     }
   });
 
+  it('shows what the simulator published and marks it as a simulation', async () => {
+    const [script, styles] = await Promise.all([
+      get('/dashboard/app.js'),
+      get('/dashboard/styles.css'),
+    ]);
+
+    for (const marker of [
+      'sim-post-',
+      'simulated_publication_error',
+      'simulatedTag',
+      'publishedAt',
+      'externalId',
+      'failureReason',
+      'Публикации контента',
+      'publicationMetrics',
+      'publicationsAttempted',
+    ]) {
+      expect(script.body, marker).toContain(marker);
+    }
+    expect(styles.body).toContain('.sim-tag');
+  });
+
   it('refreshes the data by itself while the simulator runs, and by a button', async () => {
     const script = (await get('/dashboard/app.js')).body;
 

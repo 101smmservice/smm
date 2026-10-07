@@ -20,6 +20,9 @@ interface Status {
   tickIntervalMs: number;
   eventsGenerated: number;
   lastError: string | null;
+  publicationsAttempted: number;
+  publicationsSucceeded: number;
+  publicationsFailed: number;
 }
 
 let app: FastifyInstance;
@@ -81,6 +84,9 @@ describe('GET /simulator/status', () => {
       tickIntervalMs: 1000,
       eventsGenerated: 0,
       lastError: null,
+      publicationsAttempted: 0,
+      publicationsSucceeded: 0,
+      publicationsFailed: 0,
     });
   });
 });

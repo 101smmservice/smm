@@ -134,6 +134,9 @@ describe('lifecycle', () => {
       tickIntervalMs: 1000,
       eventsGenerated: 0,
       lastError: null,
+      publicationsAttempted: 0,
+      publicationsSucceeded: 0,
+      publicationsFailed: 0,
     });
     expect(vi.getTimerCount()).toBe(0);
   });

@@ -69,6 +69,10 @@ const INTAKE_STATUS_LABELS = {
 
 const INTAKE_SOURCES = ['manual', 'import', 'api'];
 
+/** What the simulator puts into `externalId` and `failureReason` of the content it handled. */
+const SIMULATED_EXTERNAL_ID_PREFIX = 'sim-post-';
+const SIMULATED_FAILURE_REASON = 'simulated_publication_error';
+
 const ACTION_LABELS = {
   view: 'просмотр',
   like: 'отметка «нравится»',
@@ -152,6 +156,25 @@ function badge(value, kind, labels) {
     title: names[value] || null,
     text: String(value),
   });
+}
+
+/** A mark for what the simulator did: a record in the service's memory, not a real publication. */
+function simulatedTag() {
+  return h('span', {
+    class: 'sim-tag',
+    title: 'Выполнено симулятором: это запись в памяти сервиса, а не реальная публикация',
+    text: 'симуляция',
+  });
+}
+
+function isSimulatedPublication(item) {
+  return (
+    typeof item.externalId === 'string' && item.externalId.startsWith(SIMULATED_EXTERNAL_ID_PREFIX)
+  );
+}
+
+function isSimulatedFailure(item) {
+  return item.status === 'failed' && item.failureReason === SIMULATED_FAILURE_REASON;
 }
 
 function timestamp(value) {
@@ -490,6 +513,12 @@ function simulatorPanel() {
         ['Скорость', String(status.speed)],
         ['Интервал тика, мс', String(status.tickIntervalMs)],
         ['Событий создано', String(status.eventsGenerated)],
+        [
+          'Публикации контента',
+          status.publicationsAttempted === undefined
+            ? null
+            : `${String(status.publicationsAttempted)}: опубликовано ${String(status.publicationsSucceeded)}, с ошибкой ${String(status.publicationsFailed)}`,
+        ],
         ['Последняя ошибка', status.lastError],
       ]),
     );
@@ -624,6 +653,12 @@ async function renderOverview(context) {
             ['Типов переходов статуса', String(snapshot.transitionMatrix.length)],
             ['Дней с ограничениями', String(snapshot.restrictionFrequency.length)],
             ['Дней с действиями', String(snapshot.actionFailureMetrics.length)],
+            [
+              'Публикаций контента',
+              snapshot.publicationMetrics === undefined
+                ? null
+                : String(snapshot.publicationMetrics.total),
+            ],
             ['Точек выживаемости когорт', String(snapshot.cohortSurvival.length)],
           ]),
           h('p', { class: 'muted' }, 'Подробнее — на вкладке «Аналитика».'),
@@ -1254,7 +1289,13 @@ async function renderContent() {
             { title: 'Статус', render: (c) => badge(c.status) },
             { title: 'Дата плана', render: (c) => c.plannedDate },
             { title: 'В расписании на', render: (c) => timestamp(c.scheduledAt) },
-            { title: 'Опубликован', render: (c) => timestamp(c.publishedAt) },
+            {
+              title: 'Опубликован',
+              render: (c) => [
+                timestamp(c.publishedAt),
+                isSimulatedPublication(c) ? simulatedTag() : null,
+              ],
+            },
             {
               title: '',
               render: (c) =>
@@ -1473,9 +1514,22 @@ async function renderContent() {
           ['Обновлён', timestamp(item.updatedAt)],
           ['Дата плана', item.plannedDate],
           ['В расписании на', timestamp(item.scheduledAt)],
-          ['Опубликован', timestamp(item.publishedAt)],
-          ['Внешний идентификатор', item.externalId],
-          ['Причина ошибки', item.failureReason],
+          [
+            'Опубликован',
+            [timestamp(item.publishedAt), isSimulatedPublication(item) ? simulatedTag() : null],
+          ],
+          [
+            'Внешний идентификатор',
+            item.externalId === null
+              ? null
+              : [item.externalId, isSimulatedPublication(item) ? simulatedTag() : null],
+          ],
+          [
+            'Причина ошибки',
+            item.failureReason === null
+              ? null
+              : [item.failureReason, isSimulatedFailure(item) ? simulatedTag() : null],
+          ],
           ['Метаданные', Object.keys(item.metadata).length === 0 ? '—' : json(item.metadata)],
         ]),
       ),
@@ -2161,6 +2215,24 @@ function chartCard(title, note, content, wide) {
 }
 
 /** One row per account status, empty ones included, colored like the status badges. */
+/** One row of a bar chart: a badge, a short description, the bar and the count. */
+function barRow(status, description, count, largest) {
+  const fill = h('span', { class: `hbar-fill s-${safeClass(status)}` });
+  fill.style.width = `${largest === 0 ? 0 : (count / largest) * 100}%`;
+  return h(
+    'div',
+    { class: 'hbar-row', title: `${status}: ${count}` },
+    h(
+      'span',
+      { class: 'hbar-name' },
+      badge(status),
+      h('span', { class: 'muted', text: description }),
+    ),
+    h('span', { class: 'hbar-track' }, fill),
+    h('span', { class: 'hbar-value', text: String(count) }),
+  );
+}
+
 function statusBars(summary) {
   const rows = Object.keys(ACCOUNT_STATUS_LABELS).map((status) => ({
     status,
@@ -2171,22 +2243,24 @@ function statusBars(summary) {
     'div',
     { class: 'hbars' },
     summary.total === 0 ? h('p', { class: 'empty', text: 'Аккаунтов в портфеле пока нет.' }) : null,
-    rows.map((row) => {
-      const fill = h('span', { class: `hbar-fill s-${safeClass(row.status)}` });
-      fill.style.width = `${largest === 0 ? 0 : (row.count / largest) * 100}%`;
-      return h(
-        'div',
-        { class: 'hbar-row', title: `${row.status}: ${row.count}` },
-        h(
-          'span',
-          { class: 'hbar-name' },
-          badge(row.status),
-          h('span', { class: 'muted', text: ACCOUNT_STATUS_LABELS[row.status] }),
-        ),
-        h('span', { class: 'hbar-track' }, fill),
-        h('span', { class: 'hbar-value', text: String(row.count) }),
-      );
-    }),
+    rows.map((row) => barRow(row.status, ACCOUNT_STATUS_LABELS[row.status], row.count, largest)),
+  );
+}
+
+/** Published and failed publications of content, colored like the content status badges. */
+function publicationBars(metrics) {
+  const rows = [
+    { status: 'published', count: metrics.published },
+    { status: 'failed', count: metrics.failed },
+  ];
+  const largest = Math.max(0, ...rows.map((row) => row.count));
+  return h(
+    'div',
+    { class: 'hbars' },
+    metrics.total === 0
+      ? h('p', { class: 'empty', text: 'Публикаций контента пока не было.' })
+      : null,
+    rows.map((row) => barRow(row.status, CONTENT_STATUS_LABELS[row.status], row.count, largest)),
   );
 }
 
@@ -2310,6 +2384,13 @@ function visualization(snapshot) {
               })),
             }),
       ),
+      snapshot.publicationMetrics === undefined
+        ? null
+        : chartCard(
+            'Публикации контента',
+            `Публикации контента по событиям: всего ${String(snapshot.publicationMetrics.total)}. Это записи о смене статуса контента, а не реальные публикации.`,
+            publicationBars(snapshot.publicationMetrics),
+          ),
       chartCard(
         'Выживаемость когорт',
         'Доля аккаунтов когорты, которые сейчас не выведены из портфеля, по возрасту когорты.',
