@@ -8,7 +8,7 @@ monorepo.
 
 ## Current status
 
-Three packages are being developed at the moment:
+Four packages are being developed at the moment:
 
 - [`packages/core`](packages/core) (`@persona/core`) — pure domain logic and the foundation for all
   other modules: domain types (`Account`, `Persona`, `ActivityPolicy`, `DailyPlan`, …), the account
@@ -19,6 +19,9 @@ Three packages are being developed at the moment:
   action budgets, and loads policies from YAML.
 - [`packages/behavior`](packages/behavior) (`@persona/behavior`) — builds the ordered sequence of
   actions and pauses inside a single session without exceeding the daily budgets.
+- [`packages/analytics`](packages/analytics) (`@persona/analytics`) — lifecycle and portfolio
+  metrics: status summary, transition matrix, restriction frequency, action failure rate and cohort
+  survival, computed over in-memory data.
 
 Activity policies are configuration: see [`config/policies.yaml`](config/policies.yaml).
 
@@ -47,6 +50,7 @@ packages/
   core/            # @persona/core — domain model, state machine, events, contracts
   persona-engine/  # @persona/persona-engine — policies, daily plans, action budgets
   behavior/        # @persona/behavior — action sequences within a session
+  analytics/       # @persona/analytics — lifecycle and portfolio metrics
 ```
 
 Workspaces are declared in `pnpm-workspace.yaml` (`packages/*`, `services/*`). Project rules live in
