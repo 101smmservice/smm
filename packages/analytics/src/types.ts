@@ -37,6 +37,16 @@ export interface DailyActionFailureMetric {
   failureRate: number;
 }
 
+/**
+ * Publications of content: attempts that were recorded as `action_performed` (`published`) or
+ * `action_failed` (`failed`) events with `action: 'post'` and the `contentId` of the item.
+ */
+export interface PublicationMetrics {
+  total: number;
+  published: number;
+  failed: number;
+}
+
 export interface CohortSurvivalPoint {
   /** YYYY-MM-DD */
   cohortDate: string;
@@ -53,5 +63,6 @@ export interface AnalyticsSnapshot {
   transitionMatrix: TransitionMatrixCell[];
   restrictionFrequency: DailyRestrictionMetric[];
   actionFailureMetrics: DailyActionFailureMetric[];
+  publicationMetrics: PublicationMetrics;
   cohortSurvival: CohortSurvivalPoint[];
 }

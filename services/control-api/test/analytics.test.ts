@@ -37,6 +37,7 @@ describe('GET /analytics/snapshot', () => {
       'actionFailureMetrics',
       'cohortSurvival',
       'generatedAt',
+      'publicationMetrics',
       'restrictionFrequency',
       'statusSummary',
       'transitionMatrix',
@@ -68,6 +69,7 @@ describe('GET /analytics/snapshot', () => {
       transitionMatrix: [],
       restrictionFrequency: [],
       actionFailureMetrics: [],
+      publicationMetrics: { total: 0, published: 0, failed: 0 },
       cohortSurvival: [],
     });
   });

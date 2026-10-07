@@ -776,8 +776,8 @@ describe('intake together with the rest of the service', () => {
     expect(snapshot.json<{ statusSummary: { total: number } }>().statusSummary.total).toBe(1);
   });
 
-  it('lists the intake routes at GET /', async () => {
-    const { routes } = (await app.inject({ method: 'GET', url: '/' })).json<{
+  it('lists the intake routes at GET /api', async () => {
+    const { routes } = (await app.inject({ method: 'GET', url: '/api' })).json<{
       routes: { method: string; path: string }[];
     }>();
 

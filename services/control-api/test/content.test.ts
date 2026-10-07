@@ -537,3 +537,114 @@ describe('GET /accounts/:accountId/content-plan', () => {
     ).toBe(404);
   });
 });
+
+describe('GET /content', () => {
+  function list(query = '') {
+    return app.inject({ method: 'GET', url: `/content${query}` });
+  }
+
+  it('answers 200 with an empty array when there is no content', async () => {
+    const response = await list();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<ContentItem[]>()).toEqual([]);
+  });
+
+  it('answers 200 with an array of content items', async () => {
+    const item = await createContent(app, accountId);
+
+    const response = await list();
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<ContentItem[]>()).toEqual([item]);
+  });
+
+  it('lists the content of every account, oldest first', async () => {
+    const otherAccount = await createAccount(app);
+    const first = await createContent(app, accountId);
+    clock.advance(1000);
+    const second = await createContent(app, otherAccount.id);
+    clock.advance(1000);
+    const third = await createContent(app, accountId);
+
+    const items = (await list()).json<ContentItem[]>();
+
+    expect(items.map((item) => item.id)).toEqual([first.id, second.id, third.id]);
+  });
+
+  it('lists every item when they share a creation time, in a stable order', async () => {
+    const created = [
+      await createContent(app, accountId),
+      await createContent(app, accountId),
+      await createContent(app, accountId),
+    ];
+
+    const items = (await list()).json<ContentItem[]>();
+
+    expect(items.map((item) => item.id).sort()).toEqual(created.map((item) => item.id).sort());
+    expect((await list()).json<ContentItem[]>()).toEqual(items);
+  });
+
+  it('filters by account', async () => {
+    const otherAccount = await createAccount(app);
+    const mine = await createContent(app, accountId);
+    await createContent(app, otherAccount.id);
+
+    const items = (await list(`?accountId=${accountId}`)).json<ContentItem[]>();
+
+    expect(items.map((item) => item.id)).toEqual([mine.id]);
+  });
+
+  it('filters by status', async () => {
+    const draft = await createContent(app, accountId);
+    const scheduled = await createContent(app, accountId);
+    await scheduleContent(app, scheduled.id);
+
+    const drafts = (await list('?status=draft')).json<ContentItem[]>();
+    const scheduledItems = (await list('?status=scheduled')).json<ContentItem[]>();
+
+    expect(drafts.map((item) => item.id)).toEqual([draft.id]);
+    expect(scheduledItems.map((item) => item.id)).toEqual([scheduled.id]);
+    expect((await list('?status=published')).json<ContentItem[]>()).toEqual([]);
+  });
+
+  it('combines the filters', async () => {
+    const otherAccount = await createAccount(app);
+    const target = await createContent(app, accountId);
+    await createContent(app, otherAccount.id);
+    const moved = await createContent(app, accountId);
+    await transitionContent(app, moved.id, { to: 'brief_ready' });
+
+    const items = (await list(`?accountId=${accountId}&status=draft`)).json<ContentItem[]>();
+
+    expect(items.map((item) => item.id)).toEqual([target.id]);
+  });
+
+  it('answers an empty array for an account without content', async () => {
+    const response = await list('?accountId=missing');
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<ContentItem[]>()).toEqual([]);
+  });
+
+  it('answers 400 for an unknown status', async () => {
+    const response = await list('?status=archived-forever');
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('validation_error');
+  });
+
+  it('answers 400 for an empty account id', async () => {
+    const response = await list('?accountId=');
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('validation_error');
+  });
+
+  it('answers 400 for an unknown query parameter', async () => {
+    const response = await list('?limit=5');
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('validation_error');
+  });
+});

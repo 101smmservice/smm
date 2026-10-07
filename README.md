@@ -8,7 +8,7 @@ monorepo.
 
 ## Current status
 
-Six packages and one service are being developed at the moment:
+Seven packages and one service are being developed at the moment:
 
 - [`packages/core`](packages/core) (`@persona/core`) — pure domain logic and the foundation for all
   other modules: domain types (`Account`, `Persona`, `ActivityPolicy`, `DailyPlan`, …), the account
@@ -28,10 +28,18 @@ Six packages and one service are being developed at the moment:
 - [`packages/account-intake`](packages/account-intake) (`@persona/account-intake`) — manual intake of
   accounts into the system: a request is submitted with a confirmation of ownership, reviewed, and
   only then turned into an account record. It registers nothing on any platform.
+- [`packages/simulator`](packages/simulator) (`@persona/simulator`) — a simulator of the activity
+  of the account portfolio for development and demonstration: it generates lifecycle events in
+  memory from the daily plans and action sequences and, given a content pipeline, "publishes" the
+  content scheduled for the simulated day (only a status change and an event). It performs no
+  action on any platform.
 - [`services/control-api`](services/control-api) (`@persona/control-api`) — a local service for
   managing the account portfolio: accounts, manual account intake, personas, manual status changes,
   policies and daily plans, the content pipeline, events and the analytics snapshot. It keeps data in memory and
-  performs no action on any platform.
+  performs no action on any platform. It also serves a local web dashboard (`/dashboard/`, static
+  files, no build step, for local development only) with tabs for accounts, manual account intake,
+  personas, content and analytics, including charts, and with controls of the activity simulator;
+  see its README, sections «Веб-дашборд» and «Симулятор активности».
 
 Activity policies are configuration: see [`config/policies.yaml`](config/policies.yaml).
 
@@ -63,8 +71,9 @@ packages/
   analytics/       # @persona/analytics — lifecycle and portfolio metrics
   publisher/       # @persona/publisher — content pipeline, planning and publication records
   account-intake/  # @persona/account-intake — manual account intake
+  simulator/       # @persona/simulator — simulated portfolio activity (events in memory)
 services/
-  control-api/     # @persona/control-api — local portfolio management service (Fastify)
+  control-api/     # @persona/control-api — local portfolio management service (Fastify) and web dashboard
 ```
 
 Workspaces are declared in `pnpm-workspace.yaml` (`packages/*`, `services/*`). Project rules live in

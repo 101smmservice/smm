@@ -66,6 +66,7 @@ describe('createAnalyticsSnapshot', () => {
       'actionFailureMetrics',
       'cohortSurvival',
       'generatedAt',
+      'publicationMetrics',
       'restrictionFrequency',
       'statusSummary',
       'transitionMatrix',
@@ -157,6 +158,7 @@ describe('createAnalyticsSnapshot', () => {
       transitionMatrix: [],
       restrictionFrequency: [],
       actionFailureMetrics: [],
+      publicationMetrics: { total: 0, published: 0, failed: 0 },
       cohortSurvival: [],
     });
   });

@@ -48,7 +48,7 @@ describe('GET /health', () => {
   });
 });
 
-describe('GET /', () => {
+describe('GET /api', () => {
   interface Index {
     service: string;
     description: string;
@@ -56,7 +56,7 @@ describe('GET /', () => {
   }
 
   it('describes the service and lists the main routes', async () => {
-    const response = await app.inject({ method: 'GET', url: '/' });
+    const response = await app.inject({ method: 'GET', url: '/api' });
     const index = response.json<Index>();
 
     expect(response.statusCode).toBe(200);
@@ -74,7 +74,7 @@ describe('GET /', () => {
   });
 
   it('lists exactly the routes that are registered', async () => {
-    const { routes } = (await app.inject({ method: 'GET', url: '/' })).json<Index>();
+    const { routes } = (await app.inject({ method: 'GET', url: '/api' })).json<Index>();
 
     for (const route of routes) {
       expect(

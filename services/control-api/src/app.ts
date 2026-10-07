@@ -1,8 +1,10 @@
 import type { ActivityPolicy } from '@persona/core';
+import type { SimulatorProbabilities } from '@persona/simulator';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import { loadPolicies } from './config.js';
 import { createContainer } from './container.js';
+import { registerDashboard } from './dashboard.js';
 import { mapError } from './errors.js';
 import { registerAccountRoutes } from './routes/accounts.js';
 import { registerAnalyticsRoutes } from './routes/analytics.js';
@@ -11,6 +13,7 @@ import { registerEventRoutes } from './routes/events.js';
 import { registerHealthRoutes } from './routes/health.js';
 import { registerIntakeRoutes } from './routes/intake.js';
 import { registerPersonaRoutes } from './routes/personas.js';
+import { registerSimulatorRoutes } from './routes/simulator.js';
 
 export interface ControlApiOptions {
   /** Activity policies by key. When omitted they are read from `configPath`. */
@@ -19,6 +22,8 @@ export interface ControlApiOptions {
   configPath?: string;
   clock?: { now(): Date };
   rng?: () => number;
+  /** Overrides of the default chances of the activity simulator. */
+  simulatorProbabilities?: Partial<SimulatorProbabilities>;
   /** Turns request logging on. Off by default. */
   logger?: boolean;
 }
@@ -32,6 +37,7 @@ export async function buildApp(options: ControlApiOptions = {}): Promise<Fastify
     policies: await loadPolicies(options),
     clock: options.clock,
     rng: options.rng,
+    simulatorProbabilities: options.simulatorProbabilities,
   });
 
   const app = Fastify({ logger: options.logger === true });
@@ -61,6 +67,15 @@ export async function buildApp(options: ControlApiOptions = {}): Promise<Fastify
   registerEventRoutes(app, container);
   registerIntakeRoutes(app, container);
   registerAnalyticsRoutes(app, container);
+  registerSimulatorRoutes(app, container);
+  await registerDashboard(app);
+
+  // A running simulator ticks on a timer, which must not outlive the server.
+  app.addHook('onClose', async () => {
+    if (container.simulator.getStatus().running) {
+      await container.simulator.stop();
+    }
+  });
 
   return app;
 }

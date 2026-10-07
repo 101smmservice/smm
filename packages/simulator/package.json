@@ -1,8 +1,8 @@
 {
-  "name": "@persona/control-api",
+  "name": "@persona/simulator",
   "version": "0.0.0",
   "private": true,
-  "description": "Persona control API: a local service for managing the account portfolio",
+  "description": "Persona simulator: generates lifecycle events for the account portfolio in memory, without any platform integration",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,8 +13,7 @@
     }
   },
   "files": [
-    "dist",
-    "public"
+    "dist"
   ],
   "engines": {
     "node": ">=20"
@@ -24,26 +23,17 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
-    "dev": "tsx watch src/server.ts",
-    "start": "node dist/server.js"
+    "lint": "eslint ."
   },
   "dependencies": {
-    "@fastify/static": "^10.1.5",
-    "@persona/account-intake": "workspace:*",
-    "@persona/analytics": "workspace:*",
     "@persona/behavior": "workspace:*",
     "@persona/core": "workspace:*",
     "@persona/persona-engine": "workspace:*",
-    "@persona/publisher": "workspace:*",
-    "@persona/simulator": "workspace:*",
-    "fastify": "^5.12.5",
-    "zod": "^4.6.5"
+    "@persona/publisher": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
     "eslint": "^10.12.0",
-    "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^4.1.11"
   }

@@ -3,6 +3,7 @@ import {
   IntakeService,
   type IntakeRepository,
 } from '@persona/account-intake';
+import { BehaviorEngine } from '@persona/behavior';
 import type { IPersonaEngine, ActivityPolicy } from '@persona/core';
 import { PersonaEngine, StaticPolicyProvider, defaultRandom } from '@persona/persona-engine';
 import {
@@ -10,6 +11,7 @@ import {
   InMemoryContentRepository,
   type ContentRepository,
 } from '@persona/publisher';
+import { PortfolioSimulator, type SimulatorProbabilities } from '@persona/simulator';
 
 import {
   InMemoryAccountRepository,
@@ -29,6 +31,8 @@ export interface ControlApiContainer {
   contentRepository: ContentRepository;
   intakeRepository: IntakeRepository;
   intakeService: IntakeService;
+  /** Created with the container but not started; see `POST /simulator/start`. */
+  simulator: PortfolioSimulator;
   clock: { now(): Date };
 }
 
@@ -36,6 +40,8 @@ export interface CreateContainerOptions {
   policies: Record<string, ActivityPolicy>;
   clock?: { now(): Date };
   rng?: () => number;
+  /** Overrides of the default chances of the activity simulator. */
+  simulatorProbabilities?: Partial<SimulatorProbabilities>;
 }
 
 /** Wires the in-memory storage and the domain engines together. Nothing here touches the network. */
@@ -49,18 +55,22 @@ export function createContainer(options: CreateContainerOptions): ControlApiCont
   const contentRepository = new InMemoryContentRepository();
   const intakeRepository = new InMemoryIntakeRepository();
 
+  const personaEngine = new PersonaEngine({
+    accounts,
+    personas,
+    policyProvider: new StaticPolicyProvider(options.policies),
+    rng,
+    clock,
+  });
+
+  const contentPipeline = new ContentPipeline(contentRepository, { clock });
+
   return {
     accounts,
     personas,
     events,
-    personaEngine: new PersonaEngine({
-      accounts,
-      personas,
-      policyProvider: new StaticPolicyProvider(options.policies),
-      rng,
-      clock,
-    }),
-    contentPipeline: new ContentPipeline(contentRepository, { clock }),
+    personaEngine,
+    contentPipeline,
     contentRepository,
     intakeRepository,
     intakeService: new IntakeService({
@@ -69,6 +79,17 @@ export function createContainer(options: CreateContainerOptions): ControlApiCont
       personas,
       events,
       clock,
+    }),
+    simulator: new PortfolioSimulator({
+      accounts,
+      personas,
+      events,
+      personaEngine,
+      behaviorEngine: new BehaviorEngine({ rng }),
+      contentPipeline,
+      clock,
+      rng,
+      probabilities: options.simulatorProbabilities,
     }),
     clock,
   };
