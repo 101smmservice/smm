@@ -57,6 +57,18 @@ const CONTENT_TRANSITIONS = {
   archived: [],
 };
 
+const INTAKE_STATUSES = ['draft', 'pending_review', 'approved', 'rejected', 'completed'];
+
+const INTAKE_STATUS_LABELS = {
+  draft: 'черновик',
+  pending_review: 'на проверке',
+  approved: 'одобрена',
+  rejected: 'отклонена',
+  completed: 'приём завершён',
+};
+
+const INTAKE_SOURCES = ['manual', 'import', 'api'];
+
 const ACTION_LABELS = {
   view: 'просмотр',
   like: 'отметка «нравится»',
@@ -132,11 +144,12 @@ function safeClass(value) {
   return String(value).replace(/[^a-z_]/g, '');
 }
 
-function badge(value, kind) {
-  const labels = Object.assign({}, ACCOUNT_STATUS_LABELS, CONTENT_STATUS_LABELS);
+/** A status badge. `labels` picks the table the tooltip comes from when a status name is shared. */
+function badge(value, kind, labels) {
+  const names = labels || Object.assign({}, ACCOUNT_STATUS_LABELS, CONTENT_STATUS_LABELS);
   return h('span', {
     class: kind ? `badge ${kind}` : `badge s-${safeClass(value)}`,
-    title: labels[value] || null,
+    title: names[value] || null,
     text: String(value),
   });
 }
@@ -195,7 +208,9 @@ function table(columns, rows, emptyText) {
         h(
           'tr',
           {},
-          columns.map((column) => h('th', { class: column.className, text: column.title })),
+          columns.map((column) =>
+            h('th', { class: column.className, text: column.title, title: column.hint }),
+          ),
         ),
       ),
       h(
@@ -303,6 +318,45 @@ function errorBox(error) {
         )
       : null,
   );
+}
+
+/** Whether the service answered that the operator has to confirm the action first. */
+function asksForConfirmation(error) {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  if (error.code === 'manual_confirmation_required') {
+    return true;
+  }
+  // Submitting an intake request without the ownership flag is a validation error on that field.
+  return (
+    error.code === 'validation_error' &&
+    error.details.some(
+      (detail) =>
+        detail && Array.isArray(detail.path) && detail.path.includes('ownershipConfirmed'),
+    )
+  );
+}
+
+/**
+ * Sends the request without a confirmation first. When the service asks for one, the operator is
+ * asked `question` and, if they agree, the request is sent again with `confirmation` added. If they
+ * decline, the service's own answer is thrown so that it is shown like any other error.
+ */
+async function postWithConfirmation(path, body, confirmation, question) {
+  try {
+    return await api('POST', path, body);
+  } catch (error) {
+    if (!asksForConfirmation(error)) {
+      throw error;
+    }
+    const text =
+      error.code === 'manual_confirmation_required' ? `${error.message}\n\n${question}` : question;
+    if (!window.confirm(text)) {
+      throw error;
+    }
+    return api('POST', path, Object.assign({}, body, confirmation));
+  }
 }
 
 function okBox(message) {
@@ -550,23 +604,12 @@ async function renderAccounts() {
     forForm(transitionForm, async () => {
       const to = target.value;
       try {
-        let result;
-        try {
-          result = await api(
-            'POST',
-            `${path}/transition`,
-            confirmBox.checked ? { to, confirm: true } : { to },
-          );
-        } catch (error) {
-          if (!(error instanceof ApiError) || error.code !== 'manual_confirmation_required') {
-            throw error;
-          }
-          if (!window.confirm(`${error.message}\n\nПодтвердить и повторить?`)) {
-            local.error(error);
-            return;
-          }
-          result = await api('POST', `${path}/transition`, { to, confirm: true });
-        }
+        const result = await postWithConfirmation(
+          `${path}/transition`,
+          confirmBox.checked ? { to, confirm: true } : { to },
+          { confirm: true },
+          'Подтвердить и повторить?',
+        );
         await refresh();
         message.ok(`Статус аккаунта ${result.id.slice(0, 8)} изменён: ${result.status}`);
       } catch (error) {
@@ -1140,22 +1183,12 @@ async function renderContent() {
           if (externalId.value.trim() !== '') {
             body.externalId = externalId.value.trim();
           }
-          try {
-            await api('POST', `${path}/published`, body);
-          } catch (error) {
-            if (!(error instanceof ApiError) || error.code !== 'manual_confirmation_required') {
-              throw error;
-            }
-            if (
-              !window.confirm(
-                `${error.message}\n\nПодтвердить, что публикация состоялась вне этой панели, и повторить?`,
-              )
-            ) {
-              local.error(error);
-              return;
-            }
-            await api('POST', `${path}/published`, Object.assign({}, body, { confirm: true }));
-          }
+          await postWithConfirmation(
+            `${path}/published`,
+            body,
+            { confirm: true },
+            'Подтвердить, что публикация состоялась вне этой панели, и повторить?',
+          );
         } else if (to === 'failed') {
           await api('POST', `${path}/failed`, { reason: failureReason.value });
         } else {
@@ -1384,6 +1417,717 @@ async function renderContent() {
 }
 
 // ---------------------------------------------------------------------------
+// Tab: Приём
+// ---------------------------------------------------------------------------
+
+async function renderIntake() {
+  const personas = await api('GET', '/personas');
+  const message = notices();
+  const tableArea = h('div');
+  const detailArea = h('div');
+  const filter = { status: '' };
+
+  const dash = (value) => (value === null || value === undefined || value === '' ? '—' : value);
+  const personaOptions = (selected) => [
+    option('', '— не указана —', !selected),
+    personas.map((persona) =>
+      option(persona.id, `${persona.niche} · ${persona.id.slice(0, 8)}`, persona.id === selected),
+    ),
+  ];
+  const intakeBadge = (status) => badge(status, undefined, INTAKE_STATUS_LABELS);
+
+  async function loadTable() {
+    tableArea.replaceChildren(loading());
+    try {
+      const suffix = filter.status === '' ? '' : `?status=${enc(filter.status)}`;
+      const requests = await api('GET', `/intake/requests${suffix}`);
+      tableArea.replaceChildren(
+        table(
+          [
+            { title: 'id', className: 'mono', render: (r) => r.id },
+            { title: 'Платформа', hint: 'platform', render: (r) => r.platform },
+            {
+              title: 'Внешний id',
+              hint: 'externalAccountId',
+              className: 'mono',
+              render: (r) => dash(r.externalAccountId),
+            },
+            {
+              title: 'Имя пользователя',
+              hint: 'externalUsername',
+              render: (r) => dash(r.externalUsername),
+            },
+            { title: 'Источник', hint: 'source', render: (r) => r.source },
+            { title: 'Статус', hint: 'status', render: (r) => intakeBadge(r.status) },
+            { title: 'Создана', hint: 'createdAt', render: (r) => timestamp(r.createdAt) },
+            {
+              title: 'Созданный аккаунт',
+              hint: 'completedAccountId',
+              className: 'mono',
+              render: (r) => dash(r.completedAccountId),
+            },
+            {
+              title: '',
+              render: (r) =>
+                h('button', {
+                  class: 'secondary small',
+                  type: 'button',
+                  text: 'Подробнее',
+                  onclick: () => showRequest(r.id),
+                }),
+            },
+          ],
+          requests,
+          filter.status === ''
+            ? 'Заявок пока нет. Создайте первую с помощью формы выше.'
+            : 'Заявок с таким статусом нет.',
+        ),
+      );
+    } catch (error) {
+      tableArea.replaceChildren(errorBox(error));
+    }
+  }
+
+  async function showRequest(requestId, flash) {
+    detailArea.replaceChildren(loading());
+    try {
+      const request = await api('GET', `/intake/requests/${enc(requestId)}`);
+      detailArea.replaceChildren(requestPanel(request, flash));
+    } catch (error) {
+      detailArea.replaceChildren(errorBox(error));
+    }
+  }
+
+  function requestPanel(request, flash) {
+    const path = `/intake/requests/${enc(request.id)}`;
+    const local = notices();
+    if (flash) {
+      local.ok(flash);
+    }
+    const reload = (text) => Promise.all([loadTable(), showRequest(request.id, text)]);
+
+    // Runs one operation; afterwards the list and this card are loaded again with a note about it.
+    function operation(form, send) {
+      forForm(form, async () => {
+        message.clear();
+        try {
+          await reload(await send());
+        } catch (error) {
+          local.error(error);
+        }
+      });
+      return form;
+    }
+    const actions = (...buttons) => h('div', { class: 'form-actions' }, buttons);
+    const submitButton = (text, secondary) =>
+      h('button', { type: 'submit', class: secondary ? 'secondary' : null, text });
+
+    const forms = [];
+
+    if (request.status === 'draft') {
+      forms.push(
+        panel(
+          'Отправить на проверку',
+          operation(
+            h('form', { class: 'form' }, actions(submitButton('Отправить на проверку'))),
+            async () => {
+              await postWithConfirmation(
+                `${path}/submit`,
+                {},
+                { ownershipConfirmed: true },
+                'Подтвердить, что владение аккаунтом подтверждено, и отправить заявку на проверку?',
+              );
+              return 'Заявка отправлена на проверку.';
+            },
+          ),
+        ),
+      );
+    }
+
+    if (request.status === 'pending_review') {
+      const note = h('input', { type: 'text', name: 'reviewerNote' });
+      forms.push(
+        panel(
+          'Одобрить',
+          operation(
+            h(
+              'form',
+              { class: 'form' },
+              field('Заметка проверяющего', note, 'необязательно'),
+              actions(submitButton('Одобрить')),
+            ),
+            async () => {
+              const text = optionalText(note);
+              await postWithConfirmation(
+                `${path}/approve`,
+                text === undefined ? {} : { reviewerNote: text },
+                { confirmOwnership: true },
+                'Подтвердить, что проверяющий убедился во владении аккаунтом, и одобрить заявку?',
+              );
+              return 'Заявка одобрена.';
+            },
+          ),
+        ),
+      );
+    }
+
+    if (request.status === 'pending_review' || request.status === 'approved') {
+      const reason = h('textarea', { name: 'reason', required: true });
+      forms.push(
+        panel(
+          'Отклонить',
+          operation(
+            h(
+              'form',
+              { class: 'form' },
+              field('Причина отклонения', reason, 'обязательна'),
+              actions(submitButton('Отклонить', true)),
+            ),
+            async () => {
+              const text = reason.value.trim();
+              if (text === '') {
+                throw new Error('Укажите причину отклонения.');
+              }
+              await api('POST', `${path}/reject`, { reason: text });
+              return 'Заявка отклонена.';
+            },
+          ),
+        ),
+      );
+    }
+
+    if (request.status === 'rejected') {
+      forms.push(
+        panel(
+          'Вернуть в черновик',
+          operation(
+            h('form', { class: 'form' }, actions(submitButton('Вернуть в черновик'))),
+            async () => {
+              await api('POST', `${path}/reopen`, {});
+              return 'Заявка возвращена в черновик.';
+            },
+          ),
+        ),
+      );
+    }
+
+    if (request.status === 'approved') {
+      const personaSelect = h(
+        'select',
+        { name: 'personaId' },
+        personaOptions(request.desiredPersonaId),
+      );
+      forms.push(
+        panel(
+          'Завершить приём',
+          h('p', {
+            class: 'muted',
+            text: 'Завершение создаёт запись аккаунта в портфеле со статусом connected. На платформе ничего не регистрируется.',
+          }),
+          operation(
+            h(
+              'form',
+              { class: 'form' },
+              field('Персона для аккаунта', personaSelect, 'необязательно'),
+              actions(submitButton('Завершить приём')),
+            ),
+            async () => {
+              if (!window.confirm('Вы уверены? Будет создан аккаунт в портфеле.')) {
+                return null;
+              }
+              const result = await api(
+                'POST',
+                `${path}/complete`,
+                personaSelect.value === '' ? {} : { personaId: personaSelect.value },
+              );
+              return `Приём завершён. Создан аккаунт ${result.account.id}.`;
+            },
+          ),
+        ),
+      );
+    }
+
+    return h(
+      'section',
+      { class: 'panel' },
+      h(
+        'div',
+        { class: 'panel-head' },
+        h('h3', { text: 'Заявка на приём аккаунта' }),
+        h('button', {
+          class: 'secondary small',
+          type: 'button',
+          text: 'Закрыть',
+          onclick: () => detailArea.replaceChildren(),
+        }),
+      ),
+      keyValues([
+        ['id', request.id],
+        ['Платформа (platform)', request.platform],
+        ['Внешний id аккаунта (externalAccountId)', request.externalAccountId],
+        ['Имя пользователя (externalUsername)', request.externalUsername],
+        ['Источник (source)', request.source],
+        ['Желаемая персона (desiredPersonaId)', request.desiredPersonaId],
+        ['Владение подтверждено (ownershipConfirmed)', request.ownershipConfirmed ? 'да' : 'нет'],
+        ['Заметки (notes)', request.notes],
+        ['Статус (status)', intakeBadge(request.status)],
+        ['Создана (createdAt)', timestamp(request.createdAt)],
+        ['Обновлена (updatedAt)', timestamp(request.updatedAt)],
+        ['Отправлена на проверку (submittedAt)', timestamp(request.submittedAt)],
+        ['Проверена (reviewedAt)', timestamp(request.reviewedAt)],
+        ['Приём завершён (completedAt)', timestamp(request.completedAt)],
+        ['Причина отклонения (rejectionReason)', request.rejectionReason],
+        ['Созданный аккаунт (completedAccountId)', request.completedAccountId],
+        ['Метаданные (metadata)', json(request.metadata)],
+      ]),
+      local.area,
+      forms.length === 0
+        ? h('p', { class: 'empty', text: 'Для этой заявки операций нет: приём завершён.' })
+        : h('div', { class: 'stack' }, forms),
+    );
+  }
+
+  // Creation form
+  const inputs = {
+    platform: h(
+      'select',
+      { name: 'platform' },
+      PLATFORMS.map((platform) => option(platform)),
+    ),
+    externalAccountId: h('input', { type: 'text', name: 'externalAccountId' }),
+    externalUsername: h('input', { type: 'text', name: 'externalUsername' }),
+    source: h(
+      'select',
+      { name: 'source' },
+      INTAKE_SOURCES.map((source) => option(source, source, source === 'manual')),
+    ),
+    desiredPersonaId: h('select', { name: 'desiredPersonaId' }, personaOptions(null)),
+    notes: h('textarea', { name: 'notes' }),
+  };
+  const form = h(
+    'form',
+    { class: 'form' },
+    field('Платформа', inputs.platform, 'platform'),
+    field('Внешний id аккаунта', inputs.externalAccountId, 'externalAccountId · необязательно'),
+    field('Имя пользователя', inputs.externalUsername, 'externalUsername · необязательно'),
+    field('Источник заявки', inputs.source, 'source · по умолчанию manual'),
+    field('Желаемая персона', inputs.desiredPersonaId, 'desiredPersonaId · необязательно'),
+    field('Заметки', inputs.notes, 'notes · необязательно'),
+    h('div', { class: 'form-actions' }, h('button', { type: 'submit', text: 'Создать заявку' })),
+  );
+  forForm(form, async () => {
+    const body = { platform: inputs.platform.value, source: inputs.source.value };
+    for (const name of ['externalAccountId', 'externalUsername', 'notes']) {
+      const value = optionalText(inputs[name]);
+      if (value !== undefined) {
+        body[name] = value;
+      }
+    }
+    if (inputs.desiredPersonaId.value !== '') {
+      body.desiredPersonaId = inputs.desiredPersonaId.value;
+    }
+    try {
+      const created = await api('POST', '/intake/requests', body);
+      form.reset();
+      await Promise.all([loadTable(), showRequest(created.id)]);
+      message.ok(`Заявка создана: ${created.id}`);
+    } catch (error) {
+      message.error(error);
+    }
+  });
+
+  const filterSelect = h(
+    'select',
+    { name: 'status' },
+    option('', 'Все'),
+    INTAKE_STATUSES.map((status) => option(status, `${status} — ${INTAKE_STATUS_LABELS[status]}`)),
+  );
+  filterSelect.addEventListener('change', () => {
+    filter.status = filterSelect.value;
+    loadTable();
+  });
+
+  const root = h(
+    'div',
+    { class: 'stack' },
+    h('h2', { text: 'Приём аккаунтов' }),
+    h('p', {
+      class: 'muted',
+      text: 'Заявка фиксирует, что существующий аккаунт вносится в портфель вручную: после проверки и подтверждения владения создаётся запись аккаунта. Ничего не регистрируется на платформе.',
+    }),
+    panel('Новая заявка', form),
+    message.area,
+    panel('Заявки', h('div', { class: 'row' }, field('Статус', filterSelect)), tableArea),
+    detailArea,
+  );
+  await loadTable();
+  return root;
+}
+
+// ---------------------------------------------------------------------------
+// Charts: plain SVG and HTML, no libraries. Colors live in the stylesheet (the classes `series-N`,
+// `heat-N` and the status classes), because the page's policy does not allow inline styles.
+// ---------------------------------------------------------------------------
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** Builds an SVG element; like `h`, text only ever becomes a text node. */
+function s(tag, attributes, ...children) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attributes || {})) {
+    if (value === undefined || value === null || value === false) {
+      continue;
+    }
+    if (key === 'text') {
+      node.textContent = value;
+    } else {
+      node.setAttribute(key, String(value));
+    }
+  }
+  for (const child of children.flat(Infinity)) {
+    if (child !== undefined && child !== null && child !== false) {
+      node.append(child);
+    }
+  }
+  return node;
+}
+
+/** Whole-number axis values 0, step, 2·step, … that reach `max`, in about four steps. */
+function niceTicks(max) {
+  const target = Math.max(1, max);
+  const raw = target / 4;
+  const magnitude = 10 ** Math.floor(Math.log10(raw));
+  const step = Math.max(
+    1,
+    [1, 2, 5, 10].map((factor) => factor * magnitude).find((candidate) => candidate >= raw),
+  );
+  const ticks = [];
+  for (let value = 0; value < target + step; value += step) {
+    ticks.push(value);
+  }
+  return ticks;
+}
+
+/** `2026-07-10` becomes `10.07`; the full date stays in the tooltip. */
+function shortDay(date) {
+  const [, month, day] = String(date).split('-');
+  return month && day ? `${day}.${month}` : String(date);
+}
+
+/** A column with a rounded top and a square foot, as a path (`r` is capped by the size). */
+function columnPath(x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height);
+  if (r <= 0) {
+    return `M${x},${y}h${width}v${height}h${-width}Z`;
+  }
+  return `M${x},${y + height}V${y + r}Q${x},${y} ${x + r},${y}H${x + width - r}Q${x + width},${y} ${x + width},${y + r}V${y + height}Z`;
+}
+
+function legend(items) {
+  return h(
+    'ul',
+    { class: 'legend' },
+    items.map((item) =>
+      h('li', {}, h('span', { class: `swatch ${item.className}` }), h('span', { text: item.name })),
+    ),
+  );
+}
+
+/**
+ * Columns per day. A column is `{ label, sublabel, values, tooltip }`; with several `series` the
+ * values are stacked in series order and the series colors are `series-1`, `series-2`, …
+ */
+function columnChart({ columns, series, caption }) {
+  const width = 640;
+  const height = 250;
+  const hasSublabels = columns.length <= 12 && columns.some((column) => column.sublabel);
+  const margin = { top: 20, right: 12, bottom: hasSublabels ? 46 : 30, left: 40 };
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = height - margin.top - margin.bottom;
+  const totals = columns.map((column) => column.values.reduce((sum, value) => sum + value, 0));
+  const ticks = niceTicks(Math.max(0, ...totals));
+  const ceiling = ticks[ticks.length - 1];
+  const y = (value) => margin.top + plotHeight - (value / ceiling) * plotHeight;
+  const band = plotWidth / columns.length;
+  const barWidth = Math.min(24, band * 0.6);
+  const labelEvery = Math.ceil(columns.length / Math.max(1, Math.floor(plotWidth / 54)));
+
+  const svg = s('svg', {
+    class: 'chart',
+    viewBox: `0 0 ${width} ${height}`,
+    role: 'img',
+    'aria-label': caption,
+  });
+  ticks.forEach((tick, index) => {
+    svg.append(
+      s('line', {
+        class: index === 0 ? 'chart-baseline' : 'chart-grid',
+        x1: margin.left,
+        x2: width - margin.right,
+        y1: y(tick),
+        y2: y(tick),
+      }),
+      s('text', {
+        class: 'chart-axis',
+        x: margin.left - 8,
+        y: y(tick) + 4,
+        'text-anchor': 'end',
+        text: String(tick),
+      }),
+    );
+  });
+
+  columns.forEach((column, index) => {
+    const slot = margin.left + band * index;
+    const center = slot + band / 2;
+    const group = s(
+      'g',
+      {},
+      s('title', { text: column.tooltip }),
+      s('rect', { class: 'chart-hit', x: slot, y: margin.top, width: band, height: plotHeight }),
+    );
+    const lastFilled = column.values.reduce((last, value, i) => (value > 0 ? i : last), -1);
+    let cumulative = 0;
+    column.values.forEach((value, i) => {
+      if (value <= 0) {
+        return;
+      }
+      const top = y(cumulative + value);
+      // The gap between stacked segments is part of the segment below the boundary.
+      const gap = cumulative > 0 ? 2 : 0;
+      group.append(
+        s('path', {
+          class: `series-${i + 1}`,
+          d: columnPath(
+            center - barWidth / 2,
+            top,
+            barWidth,
+            Math.max(1, y(cumulative) - top - gap),
+            i === lastFilled ? 4 : 0,
+          ),
+        }),
+      );
+      cumulative += value;
+    });
+    if (columns.length <= 14 && totals[index] > 0) {
+      group.append(
+        s('text', {
+          class: 'chart-value',
+          x: center,
+          y: y(totals[index]) - 5,
+          'text-anchor': 'middle',
+          text: String(totals[index]),
+        }),
+      );
+    }
+    if (index % labelEvery === 0) {
+      group.append(
+        s('text', {
+          class: 'chart-axis',
+          x: center,
+          y: height - margin.bottom + 16,
+          'text-anchor': 'middle',
+          text: column.label,
+        }),
+      );
+      if (hasSublabels && column.sublabel) {
+        group.append(
+          s('text', {
+            class: 'chart-axis',
+            x: center,
+            y: height - margin.bottom + 31,
+            'text-anchor': 'middle',
+            text: column.sublabel,
+          }),
+        );
+      }
+    }
+    svg.append(group);
+  });
+
+  return h(
+    'div',
+    {},
+    series.length > 1
+      ? legend(series.map((item, i) => ({ name: item.name, className: `series-${i + 1}` })))
+      : null,
+    svg,
+  );
+}
+
+function chartCard(title, note, content, wide) {
+  return h(
+    'section',
+    { class: wide ? 'panel chart-card wide' : 'panel chart-card' },
+    h('h3', { text: title }),
+    note ? h('p', { class: 'muted chart-note', text: note }) : null,
+    content,
+  );
+}
+
+/** One row per account status, empty ones included, colored like the status badges. */
+function statusBars(summary) {
+  const rows = Object.keys(ACCOUNT_STATUS_LABELS).map((status) => ({
+    status,
+    count: (summary.byStatus && summary.byStatus[status]) || 0,
+  }));
+  const largest = Math.max(0, ...rows.map((row) => row.count));
+  return h(
+    'div',
+    { class: 'hbars' },
+    summary.total === 0 ? h('p', { class: 'empty', text: 'Аккаунтов в портфеле пока нет.' }) : null,
+    rows.map((row) => {
+      const fill = h('span', { class: `hbar-fill s-${safeClass(row.status)}` });
+      fill.style.width = `${largest === 0 ? 0 : (row.count / largest) * 100}%`;
+      return h(
+        'div',
+        { class: 'hbar-row', title: `${row.status}: ${row.count}` },
+        h(
+          'span',
+          { class: 'hbar-name' },
+          badge(row.status),
+          h('span', { class: 'muted', text: ACCOUNT_STATUS_LABELS[row.status] }),
+        ),
+        h('span', { class: 'hbar-track' }, fill),
+        h('span', { class: 'hbar-value', text: String(row.count) }),
+      );
+    }),
+  );
+}
+
+const HEAT_BUCKETS = ['0–20%', '20–40%', '40–60%', '60–80%', '80–100%'];
+
+function heatBucket(rate) {
+  return Math.max(
+    0,
+    Math.min(HEAT_BUCKETS.length - 1, Math.floor(Number(rate) * HEAT_BUCKETS.length)),
+  );
+}
+
+/** Cohorts as rows, ages in days as columns, and each cell shaded by the survival rate. */
+function survivalHeatmap(points) {
+  const days = [...new Set(points.map((point) => point.day))].sort((a, b) => a - b);
+  const cohorts = [...new Set(points.map((point) => point.cohortDate))].sort();
+  const byKey = new Map(points.map((point) => [`${point.cohortDate}|${point.day}`, point]));
+  return h(
+    'div',
+    {},
+    h(
+      'ul',
+      { class: 'legend' },
+      HEAT_BUCKETS.map((label, index) =>
+        h('li', {}, h('span', { class: `swatch heat-${index}` }), h('span', { text: label })),
+      ),
+    ),
+    h(
+      'div',
+      { class: 'table-wrap' },
+      h(
+        'table',
+        { class: 'heatmap' },
+        h(
+          'thead',
+          {},
+          h(
+            'tr',
+            {},
+            h('th', { text: 'Когорта' }),
+            h('th', { class: 'num', text: 'Аккаунтов' }),
+            days.map((day) => h('th', { class: 'num', text: `день ${day}` })),
+          ),
+        ),
+        h(
+          'tbody',
+          {},
+          cohorts.map((cohortDate) => {
+            const total = points.find((point) => point.cohortDate === cohortDate).total;
+            return h(
+              'tr',
+              {},
+              h('td', { text: cohortDate }),
+              h('td', { class: 'num', text: String(total) }),
+              days.map((day) => {
+                const point = byKey.get(`${cohortDate}|${day}`);
+                return point
+                  ? h('td', {
+                      class: `num heat-${heatBucket(point.survivalRate)}`,
+                      title: `${cohortDate}, день ${day}: ${point.alive} из ${point.total}`,
+                      text: percent(point.survivalRate),
+                    })
+                  : h('td', {
+                      class: 'num heat-none',
+                      title: 'Когорта ещё не достигла этого возраста',
+                      text: '—',
+                    });
+              }),
+            );
+          }),
+        ),
+      ),
+    ),
+  );
+}
+
+/** The section above the tables of the analytics tab. The tables below stay as the exact figures. */
+function visualization(snapshot) {
+  const restriction = snapshot.restrictionFrequency;
+  const failures = snapshot.actionFailureMetrics;
+  return h(
+    'section',
+    { class: 'stack' },
+    h('h3', { class: 'section-title', text: 'Визуализация' }),
+    h(
+      'div',
+      { class: 'charts' },
+      chartCard(
+        'Аккаунты по статусам',
+        'Число аккаунтов в каждом статусе; цвета те же, что у бейджей статусов.',
+        statusBars(snapshot.statusSummary),
+      ),
+      chartCard(
+        'Частота ограничений',
+        'События ограничений по дням (даты UTC); точные значения и число затронутых аккаунтов — в подсказке и в таблице ниже.',
+        restriction.length === 0
+          ? h('p', { class: 'empty', text: 'Ограничений за период не зафиксировано.' })
+          : columnChart({
+              caption: 'Число событий ограничений по дням',
+              series: [{ name: 'События ограничений' }],
+              columns: restriction.map((row) => ({
+                label: shortDay(row.date),
+                values: [row.restrictionEvents],
+                tooltip: `${row.date}: событий ${row.restrictionEvents}, затронуто аккаунтов ${row.accountsAffected}`,
+              })),
+            }),
+      ),
+      chartCard(
+        'Ошибки действий',
+        'Выполненные действия и действия с ошибкой по дням (даты UTC); под датой — доля ошибок.',
+        failures.length === 0
+          ? h('p', { class: 'empty', text: 'Действий за период не зафиксировано.' })
+          : columnChart({
+              caption: 'Выполненные действия и ошибки по дням',
+              series: [{ name: 'Выполнено' }, { name: 'С ошибкой' }],
+              columns: failures.map((row) => ({
+                label: shortDay(row.date),
+                sublabel: percent(row.failureRate),
+                values: [row.performed, row.failed],
+                tooltip: `${row.date}: выполнено ${row.performed}, с ошибкой ${row.failed}, доля ошибок ${percent(row.failureRate)}`,
+              })),
+            }),
+      ),
+      chartCard(
+        'Выживаемость когорт',
+        'Доля аккаунтов когорты, которые сейчас не выведены из портфеля, по возрасту когорты.',
+        snapshot.cohortSurvival.length === 0
+          ? h('p', { class: 'empty', text: 'Когорт, достигших нужного возраста, пока нет.' })
+          : survivalHeatmap(snapshot.cohortSurvival),
+        true,
+      ),
+    ),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tab: Аналитика
 // ---------------------------------------------------------------------------
 
@@ -1430,6 +2174,7 @@ async function renderAnalytics() {
     return h(
       'div',
       { class: 'stack' },
+      visualization(snapshot),
       panel(
         'Сводка по статусам',
         keyValues([
@@ -1543,6 +2288,7 @@ async function renderAnalytics() {
 const ROUTES = {
   overview: renderOverview,
   accounts: renderAccounts,
+  intake: renderIntake,
   personas: renderPersonas,
   content: renderContent,
   analytics: renderAnalytics,

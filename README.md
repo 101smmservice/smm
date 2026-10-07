@@ -32,7 +32,8 @@ Six packages and one service are being developed at the moment:
   managing the account portfolio: accounts, manual account intake, personas, manual status changes,
   policies and daily plans, the content pipeline, events and the analytics snapshot. It keeps data in memory and
   performs no action on any platform. It also serves a local web dashboard (`/dashboard/`, static
-  files, no build step, for local development only); see its README, section «Веб-дашборд».
+  files, no build step, for local development only) with tabs for accounts, manual account intake,
+  personas, content and analytics, including charts; see its README, section «Веб-дашборд».
 
 Activity policies are configuration: see [`config/policies.yaml`](config/policies.yaml).
 

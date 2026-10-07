@@ -115,12 +115,49 @@ describe('static files', () => {
 });
 
 describe('page content', () => {
-  it('has the five tabs, in Russian', async () => {
+  it('has the six tabs, in Russian', async () => {
     const page = (await get('/dashboard/')).body;
 
-    for (const label of ['Обзор', 'Аккаунты', 'Персоны', 'Контент', 'Аналитика']) {
+    for (const label of ['Обзор', 'Аккаунты', 'Приём', 'Персоны', 'Контент', 'Аналитика']) {
       expect(page).toContain(label);
     }
+    for (const route of ['overview', 'accounts', 'intake', 'personas', 'content', 'analytics']) {
+      expect(page).toContain(`data-route="${route}"`);
+    }
+  });
+
+  it('links the intake tab to #/intake', async () => {
+    const page = (await get('/dashboard/')).body;
+
+    expect(page).toContain('href="#/intake"');
+  });
+
+  it('has a script that talks to the intake endpoints and draws the charts', async () => {
+    const script = (await get('/dashboard/app.js')).body;
+
+    for (const marker of [
+      '/intake/requests',
+      '/submit',
+      '/approve',
+      '/reject',
+      '/reopen',
+      '/complete',
+      'createElementNS',
+      'restrictionFrequency',
+      'actionFailureMetrics',
+      'cohortSurvival',
+    ]) {
+      expect(script, marker).toContain(marker);
+    }
+  });
+
+  it('draws the charts without libraries or inline styles', async () => {
+    const [script, page] = await Promise.all([get('/dashboard/app.js'), get('/dashboard/')]);
+
+    expect(script.body).not.toMatch(
+      /\bimport\s*\(|\brequire\s*\(|<script|innerHTML|setAttribute\(\s*['"]style/,
+    );
+    expect(page.body).not.toMatch(/\sstyle=/);
   });
 
   it('sends headers that keep the page on its own origin', async () => {
@@ -136,7 +173,9 @@ describe('page content', () => {
   it.each(['/dashboard/', '/dashboard/styles.css', '/dashboard/app.js'])(
     'loads nothing from another origin in %s',
     async (url) => {
-      const { body } = await get(url);
+      // The SVG namespace is an identifier that the script passes to createElementNS, not an address
+      // that anything is loaded from.
+      const body = (await get(url)).body.replaceAll('http://www.w3.org/2000/svg', '');
 
       expect(body).not.toMatch(/https?:\/\//);
       expect(body).not.toMatch(/(?:src|href)=["']\/\//);
