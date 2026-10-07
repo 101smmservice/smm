@@ -421,14 +421,143 @@ function localDateTimeToIso(value) {
 // Tab: Обзор
 // ---------------------------------------------------------------------------
 
-async function renderOverview() {
-  const [accounts, personas, content, events, snapshot] = await Promise.all([
-    api('GET', '/accounts'),
-    api('GET', '/personas'),
-    api('GET', '/content'),
-    api('GET', '/events'),
-    api('GET', '/analytics/snapshot'),
-  ]);
+/** A small "refresh" button. `onRefresh` deals with its own errors. */
+function refreshButton(onRefresh) {
+  const button = h('button', { type: 'button', class: 'secondary small', text: 'Обновить' });
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await onRefresh();
+    } finally {
+      button.disabled = false;
+    }
+  });
+  return button;
+}
+
+/**
+ * The panel that starts and stops the activity simulator and shows what it is doing. The simulation
+ * is local: it generates events in the memory of the service and touches no real platform.
+ */
+function simulatorPanel() {
+  const message = notices();
+  const indicator = h('span', { class: 'sim-indicator stopped', text: 'остановлен' });
+  const details = h('div', { class: 'sim-details' });
+  const speedInput = h('input', {
+    type: 'number',
+    name: 'speed',
+    value: '60',
+    min: '0.001',
+    max: '10000',
+    step: 'any',
+  });
+  const intervalInput = h('input', {
+    type: 'number',
+    name: 'tickIntervalMs',
+    value: '1000',
+    min: '10',
+    max: '60000',
+    step: '1',
+  });
+  const startButton = h('button', { type: 'submit', text: 'Запустить' });
+  const stopButton = h('button', { type: 'button', class: 'secondary', text: 'Остановить' });
+  const form = h(
+    'form',
+    { class: 'form' },
+    field('Скорость', speedInput, 'от 0,001 до 10000; 60 — одна секунда за минуту'),
+    field('Интервал тика, мс', intervalInput, 'от 10 до 60000'),
+    h('div', { class: 'form-actions' }, startButton, stopButton),
+  );
+
+  let running = false;
+  let pending = false;
+
+  function applyButtons() {
+    startButton.disabled = pending || running;
+    stopButton.disabled = pending || !running;
+  }
+
+  /** Shows the state of the simulator. The fields of the form are left alone. */
+  function update(status) {
+    running = status.running;
+    const failed = Boolean(status.lastError);
+    indicator.className = `sim-indicator ${failed ? 'error' : running ? 'running' : 'stopped'}`;
+    indicator.textContent = running ? 'запущен' : 'остановлен';
+    details.replaceChildren(
+      keyValues([
+        ['Симулированное время', timestamp(status.simulatedTime)],
+        ['Тиков', String(status.tickCount)],
+        ['Скорость', String(status.speed)],
+        ['Интервал тика, мс', String(status.tickIntervalMs)],
+        ['Событий создано', String(status.eventsGenerated)],
+        ['Последняя ошибка', status.lastError],
+      ]),
+    );
+    applyButtons();
+  }
+
+  async function loadStatus() {
+    update(await api('GET', '/simulator/status'));
+  }
+
+  async function run(request, success) {
+    pending = true;
+    applyButtons();
+    message.clear();
+    try {
+      update(await request());
+      message.ok(success);
+    } catch (error) {
+      message.error(error);
+      try {
+        await loadStatus();
+      } catch {
+        // The error above already says what is wrong.
+      }
+    } finally {
+      pending = false;
+      applyButtons();
+    }
+  }
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const body = {};
+    if (speedInput.value.trim() !== '') {
+      body.speed = Number(speedInput.value);
+    }
+    if (intervalInput.value.trim() !== '') {
+      body.tickIntervalMs = Number(intervalInput.value);
+    }
+    run(() => api('POST', '/simulator/start', body), 'Симулятор запущен.');
+  });
+  stopButton.addEventListener('click', () => {
+    run(() => api('POST', '/simulator/stop', {}), 'Симулятор остановлен.');
+  });
+  applyButtons();
+
+  const element = panel(
+    'Симуляция активности',
+    h('p', {
+      class: 'muted',
+      text: 'Симулятор создаёт события по дневным планам аккаунтов — только в памяти этого сервиса, без обращений к реальным платформам. Пока он запущен, данные на вкладках «Обзор», «Аккаунты» и «Аналитика» обновляются каждые 5 секунд.',
+    }),
+    h('div', { class: 'sim-status' }, 'Состояние: ', indicator),
+    details,
+    form,
+    h('p', {
+      class: 'field-hint',
+      text: 'Если окно активности персон ещё не наступило, увеличьте скорость: 3600 — одна секунда за час.',
+    }),
+    message.area,
+  );
+  return { element, update, loadStatus };
+}
+
+async function renderOverview(context) {
+  const simulator = simulatorPanel();
+  const dataArea = h('div', { class: 'stack' });
+  const refreshNotice = notices();
 
   const card = (label, value) =>
     h(
@@ -438,66 +567,98 @@ async function renderOverview() {
       h('div', { class: 'card-label', text: label }),
     );
 
-  const byStatus = Object.keys(ACCOUNT_STATUS_LABELS).map((status) => ({
-    status,
-    count: accounts.filter((account) => account.status === status).length,
-  }));
-  const summary = snapshot.statusSummary;
-  const isEmpty = accounts.length + personas.length + content.length + events.length === 0;
+  async function load() {
+    const [accounts, personas, content, events, snapshot, status] = await Promise.all([
+      api('GET', '/accounts'),
+      api('GET', '/personas'),
+      api('GET', '/content'),
+      api('GET', '/events'),
+      api('GET', '/analytics/snapshot'),
+      api('GET', '/simulator/status'),
+    ]);
+    simulator.update(status);
 
-  return h(
+    const byStatus = Object.keys(ACCOUNT_STATUS_LABELS).map((name) => ({
+      status: name,
+      count: accounts.filter((account) => account.status === name).length,
+    }));
+    const summary = snapshot.statusSummary;
+    const isEmpty = accounts.length + personas.length + content.length + events.length === 0;
+
+    dataArea.replaceChildren(
+      ...[
+        isEmpty
+          ? h('p', {
+              class: 'empty',
+              text: 'Пока нет данных. Создайте персону и аккаунт на соответствующих вкладках.',
+            })
+          : null,
+        h(
+          'div',
+          { class: 'cards' },
+          card('Аккаунтов', accounts.length),
+          card('Персон', personas.length),
+          card('Контентных элементов', content.length),
+          card('Событий', events.length),
+        ),
+        panel(
+          'Аккаунты по статусам',
+          table(
+            [
+              { title: 'Статус', render: (row) => badge(row.status) },
+              { title: 'Описание', render: (row) => ACCOUNT_STATUS_LABELS[row.status] },
+              { title: 'Количество', className: 'num', render: (row) => String(row.count) },
+            ],
+            byStatus,
+            '',
+          ),
+        ),
+        panel(
+          'Краткий аналитический снимок',
+          keyValues([
+            ['Сформирован', timestamp(snapshot.generatedAt)],
+            ['Доля активных', percent(summary.activeRate)],
+            ['Доля ограниченных', percent(summary.limitedRate)],
+            ['Доля на ручном разборе', percent(summary.reviewRate)],
+            ['Доля выведенных', percent(summary.deadRate)],
+            ['Типов переходов статуса', String(snapshot.transitionMatrix.length)],
+            ['Дней с ограничениями', String(snapshot.restrictionFrequency.length)],
+            ['Дней с действиями', String(snapshot.actionFailureMetrics.length)],
+            ['Точек выживаемости когорт', String(snapshot.cohortSurvival.length)],
+          ]),
+          h('p', { class: 'muted' }, 'Подробнее — на вкладке «Аналитика».'),
+        ),
+      ].filter(Boolean),
+    );
+  }
+
+  async function refresh() {
+    try {
+      await load();
+      refreshNotice.clear();
+    } catch (error) {
+      refreshNotice.error(error);
+    }
+  }
+  context.refresh = refresh;
+
+  const root = h(
     'div',
     { class: 'stack' },
-    h('h2', { text: 'Обзор портфеля' }),
-    isEmpty
-      ? h('p', {
-          class: 'empty',
-          text: 'Пока нет данных. Создайте персону и аккаунт на соответствующих вкладках.',
-        })
-      : null,
-    h(
-      'div',
-      { class: 'cards' },
-      card('Аккаунтов', accounts.length),
-      card('Персон', personas.length),
-      card('Контентных элементов', content.length),
-      card('Событий', events.length),
-    ),
-    panel(
-      'Аккаунты по статусам',
-      table(
-        [
-          { title: 'Статус', render: (row) => badge(row.status) },
-          { title: 'Описание', render: (row) => ACCOUNT_STATUS_LABELS[row.status] },
-          { title: 'Количество', className: 'num', render: (row) => String(row.count) },
-        ],
-        byStatus,
-        '',
-      ),
-    ),
-    panel(
-      'Краткий аналитический снимок',
-      keyValues([
-        ['Сформирован', timestamp(snapshot.generatedAt)],
-        ['Доля активных', percent(summary.activeRate)],
-        ['Доля ограниченных', percent(summary.limitedRate)],
-        ['Доля на ручном разборе', percent(summary.reviewRate)],
-        ['Доля выведенных', percent(summary.deadRate)],
-        ['Типов переходов статуса', String(snapshot.transitionMatrix.length)],
-        ['Дней с ограничениями', String(snapshot.restrictionFrequency.length)],
-        ['Дней с действиями', String(snapshot.actionFailureMetrics.length)],
-        ['Точек выживаемости когорт', String(snapshot.cohortSurvival.length)],
-      ]),
-      h('p', { class: 'muted' }, 'Подробнее — на вкладке «Аналитика».'),
-    ),
+    h('div', { class: 'panel-head' }, h('h2', { text: 'Обзор портфеля' }), refreshButton(refresh)),
+    refreshNotice.area,
+    simulator.element,
+    dataArea,
   );
+  await load();
+  return root;
 }
 
 // ---------------------------------------------------------------------------
 // Tab: Аккаунты
 // ---------------------------------------------------------------------------
 
-async function renderAccounts() {
+async function renderAccounts(context) {
   const personas = await api('GET', '/personas');
   const message = notices();
   const tableArea = h('div');
@@ -518,8 +679,11 @@ async function renderAccounts() {
       ),
     );
 
-  async function loadTable() {
-    tableArea.replaceChildren(loading());
+  /** `quiet` keeps the table in place while it is loaded again, as the automatic refresh does. */
+  async function loadTable(quiet = false) {
+    if (!quiet) {
+      tableArea.replaceChildren(loading());
+    }
     try {
       const accounts = await api(
         'GET',
@@ -865,12 +1029,18 @@ async function renderAccounts() {
         'div',
         { class: 'panel-head' },
         h('h3', { text: 'Список аккаунтов' }),
-        field('Статус', filterSelect),
+        h(
+          'div',
+          { class: 'row' },
+          field('Статус', filterSelect),
+          refreshButton(() => loadTable()),
+        ),
       ),
       tableArea,
     ),
     detailArea,
   );
+  context.refresh = () => loadTable(true);
   await loadTable();
   return root;
 }
@@ -1036,7 +1206,17 @@ async function renderPersonas() {
     }),
     panel('Новая персона', form),
     message.area,
-    panel('Список персон', tableArea),
+    h(
+      'section',
+      { class: 'panel' },
+      h(
+        'div',
+        { class: 'panel-head' },
+        h('h3', { text: 'Список персон' }),
+        refreshButton(() => loadTable()),
+      ),
+      tableArea,
+    ),
     detailArea,
   );
   await loadTable();
@@ -1406,7 +1586,13 @@ async function renderContent() {
         'div',
         { class: 'panel-head' },
         h('h3', { text: 'Контентные элементы' }),
-        h('div', { class: 'row' }, field('Аккаунт', filterAccount), field('Статус', filterStatus)),
+        h(
+          'div',
+          { class: 'row' },
+          field('Аккаунт', filterAccount),
+          field('Статус', filterStatus),
+          refreshButton(() => loadTable()),
+        ),
       ),
       tableArea,
     ),
@@ -1757,7 +1943,16 @@ async function renderIntake() {
     }),
     panel('Новая заявка', form),
     message.area,
-    panel('Заявки', h('div', { class: 'row' }, field('Статус', filterSelect)), tableArea),
+    panel(
+      'Заявки',
+      h(
+        'div',
+        { class: 'row' },
+        field('Статус', filterSelect),
+        refreshButton(() => loadTable()),
+      ),
+      tableArea,
+    ),
     detailArea,
   );
   await loadTable();
@@ -2131,7 +2326,7 @@ function visualization(snapshot) {
 // Tab: Аналитика
 // ---------------------------------------------------------------------------
 
-async function renderAnalytics() {
+async function renderAnalytics(context) {
   const message = notices();
   const resultArea = h('div');
 
@@ -2147,8 +2342,11 @@ async function renderAnalytics() {
     h('div', { class: 'form-actions' }, h('button', { type: 'submit', text: 'Обновить снимок' })),
   );
 
-  async function load() {
-    resultArea.replaceChildren(loading());
+  /** `quiet` keeps the figures in place while they are loaded again, as the automatic refresh does. */
+  async function load(quiet = false) {
+    if (!quiet) {
+      resultArea.replaceChildren(loading());
+    }
     const query = new URLSearchParams();
     for (const input of [startInput, endInput, daysInput]) {
       if (input.value.trim() !== '') {
@@ -2163,11 +2361,14 @@ async function renderAnalytics() {
       message.clear();
       resultArea.replaceChildren(snapshotView(snapshot));
     } catch (error) {
-      resultArea.replaceChildren();
+      if (!quiet) {
+        resultArea.replaceChildren();
+      }
       message.error(error);
     }
   }
-  forForm(form, load);
+  forForm(form, () => load());
+  context.refresh = () => load(true);
 
   function snapshotView(snapshot) {
     const summary = snapshot.statusSummary;
@@ -2299,6 +2500,8 @@ function currentRoute() {
   return match && Object.hasOwn(ROUTES, match[1]) ? match[1] : 'overview';
 }
 
+/** Reloads the data of the tab that is open, without touching its forms; `null` if it has none. */
+let currentRefresh = null;
 let navigationCounter = 0;
 
 async function navigate() {
@@ -2312,10 +2515,13 @@ async function navigate() {
   const mine = navigationCounter;
   const view = document.getElementById('view');
   view.replaceChildren(loading());
+  const context = { refresh: null };
+  currentRefresh = null;
   try {
-    const content = await ROUTES[route]();
+    const content = await ROUTES[route](context);
     if (mine === navigationCounter) {
       view.replaceChildren(content);
+      currentRefresh = context.refresh;
     }
   } catch (error) {
     if (mine === navigationCounter) {
@@ -2326,3 +2532,37 @@ async function navigate() {
 
 window.addEventListener('hashchange', navigate);
 navigate();
+
+// ---------------------------------------------------------------------------
+// Automatic refresh while the simulator runs
+// ---------------------------------------------------------------------------
+
+const AUTO_REFRESH_MS = 5000;
+
+let autoRefreshing = false;
+let simulatorWasRunning = false;
+
+/**
+ * While the simulator runs (and once more right after it stopped), reloads the data of the open tab.
+ * Only the data is replaced, never the forms, so nothing the user is typing is lost.
+ */
+async function autoRefresh() {
+  if (autoRefreshing || document.hidden || currentRefresh === null) {
+    return;
+  }
+  autoRefreshing = true;
+  try {
+    const status = await api('GET', '/simulator/status');
+    const due = status.running || simulatorWasRunning;
+    simulatorWasRunning = status.running;
+    if (due && currentRefresh !== null) {
+      await currentRefresh();
+    }
+  } catch {
+    // The next round tries again.
+  } finally {
+    autoRefreshing = false;
+  }
+}
+
+window.setInterval(autoRefresh, AUTO_REFRESH_MS);

@@ -669,3 +669,67 @@ td.heat-none {
     grid-column: 1 / -1;
   }
 }
+
+/* Simulator panel */
+
+.sim-status {
+  margin: 4px 0 8px;
+  font-weight: 600;
+}
+
+.sim-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--off-bg);
+  color: var(--off-text);
+}
+
+.sim-indicator::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--off-bar);
+}
+
+.sim-indicator.stopped {
+  background: var(--off-bg);
+  color: var(--off-text);
+}
+
+.sim-indicator.stopped::before {
+  background: var(--off-bar);
+}
+
+.sim-indicator.running {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.sim-indicator.running::before {
+  background: var(--ok-bar);
+}
+
+.sim-indicator.error {
+  background: var(--bad-bg);
+  color: var(--bad-text);
+}
+
+.sim-indicator.error::before {
+  background: var(--bad-bar);
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sim-details {
+  margin-bottom: 14px;
+}

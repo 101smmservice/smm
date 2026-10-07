@@ -116,6 +116,14 @@ export const ROUTES: readonly RouteDescription[] = [
     path: '/analytics/snapshot',
     description: 'Analytics snapshot of the portfolio',
   },
+
+  { method: 'GET', path: '/simulator/status', description: 'State of the activity simulator' },
+  {
+    method: 'POST',
+    path: '/simulator/start',
+    description: 'Start the activity simulator (speed, tickIntervalMs, maxTicks)',
+  },
+  { method: 'POST', path: '/simulator/stop', description: 'Stop the activity simulator' },
 ];
 
 export function registerHealthRoutes(app: FastifyInstance, container: ControlApiContainer): void {

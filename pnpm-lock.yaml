@@ -142,6 +142,31 @@ importers:
         specifier: ^4.1.11
         version: 4.1.11(@types/node@20.19.43)(vite@8.3.3(@types/node@20.19.43)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
 
+  packages/simulator:
+    dependencies:
+      '@persona/behavior':
+        specifier: workspace:*
+        version: link:../behavior
+      '@persona/core':
+        specifier: workspace:*
+        version: link:../core
+      '@persona/persona-engine':
+        specifier: workspace:*
+        version: link:../persona-engine
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.43
+        version: 20.19.43
+      eslint:
+        specifier: ^10.12.0
+        version: 10.12.0
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.11
+        version: 4.1.11(@types/node@20.19.43)(vite@8.3.3(@types/node@20.19.43)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1))
+
   services/control-api:
     dependencies:
       '@fastify/static':
@@ -153,6 +178,9 @@ importers:
       '@persona/analytics':
         specifier: workspace:*
         version: link:../../packages/analytics
+      '@persona/behavior':
+        specifier: workspace:*
+        version: link:../../packages/behavior
       '@persona/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -162,6 +190,9 @@ importers:
       '@persona/publisher':
         specifier: workspace:*
         version: link:../../packages/publisher
+      '@persona/simulator':
+        specifier: workspace:*
+        version: link:../../packages/simulator
       fastify:
         specifier: ^5.12.5
         version: 5.12.5

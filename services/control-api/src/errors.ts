@@ -10,6 +10,7 @@ import {
   ContentValidationError,
   InvalidContentTransitionError,
 } from '@persona/publisher';
+import { SimulatorAlreadyRunningError, SimulatorNotRunningError } from '@persona/simulator';
 import { ZodError } from 'zod';
 
 export const API_ERROR_CODES = [
@@ -18,6 +19,8 @@ export const API_ERROR_CODES = [
   'invalid_transition',
   'manual_confirmation_required',
   'duplicate_intake',
+  'simulator_already_running',
+  'simulator_not_running',
   'domain_error',
   'internal_error',
 ] as const;
@@ -117,6 +120,12 @@ export function mapError(error: unknown): MappedError {
         existingRequestId: error.existingRequestId,
       },
     ]);
+  }
+  if (error instanceof SimulatorAlreadyRunningError) {
+    return mapped(409, 'simulator_already_running', error.message);
+  }
+  if (error instanceof SimulatorNotRunningError) {
+    return mapped(409, 'simulator_not_running', error.message);
   }
   if (error instanceof ValidationError) {
     return mapped(400, 'validation_error', error.message, [

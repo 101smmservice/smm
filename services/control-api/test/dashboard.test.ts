@@ -151,6 +151,41 @@ describe('page content', () => {
     }
   });
 
+  it('has the simulator panel and talks to the simulator endpoints', async () => {
+    const script = (await get('/dashboard/app.js')).body;
+
+    for (const marker of [
+      'Симуляция активности',
+      'Запустить',
+      'Остановить',
+      '/simulator/status',
+      '/simulator/start',
+      '/simulator/stop',
+    ]) {
+      expect(script, marker).toContain(marker);
+    }
+  });
+
+  it('refreshes the data by itself while the simulator runs, and by a button', async () => {
+    const script = (await get('/dashboard/app.js')).body;
+
+    expect(script).toContain('AUTO_REFRESH_MS = 5000');
+    expect(script).toContain('Обновить');
+    expect(script).toContain('currentRefresh');
+  });
+
+  it('styles the state of the simulator', async () => {
+    const styles = (await get('/dashboard/styles.css')).body;
+
+    for (const marker of [
+      '.sim-indicator.running',
+      '.sim-indicator.stopped',
+      '.sim-indicator.error',
+    ]) {
+      expect(styles, marker).toContain(marker);
+    }
+  });
+
   it('draws the charts without libraries or inline styles', async () => {
     const [script, page] = await Promise.all([get('/dashboard/app.js'), get('/dashboard/')]);
 
@@ -205,15 +240,20 @@ describe('the dashboard does not intercept the API', () => {
     expect(response.json<unknown[]>()).toHaveLength(1);
   });
 
-  it.each(['/health', '/api', '/personas', '/content', '/events', '/analytics/snapshot'])(
-    'still answers GET %s with JSON',
-    async (url) => {
-      const response = await get(url);
+  it.each([
+    '/health',
+    '/api',
+    '/personas',
+    '/content',
+    '/events',
+    '/analytics/snapshot',
+    '/simulator/status',
+  ])('still answers GET %s with JSON', async (url) => {
+    const response = await get(url);
 
-      expect(response.statusCode).toBe(200);
-      expect(response.headers['content-type']).toContain('application/json');
-    },
-  );
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('application/json');
+  });
 
   it('keeps the JSON 404 for an unknown account', async () => {
     const response = await get('/accounts/missing');

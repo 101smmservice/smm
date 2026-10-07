@@ -11,6 +11,11 @@ import {
   ContentValidationError,
   InvalidContentTransitionError,
 } from '@persona/publisher';
+import {
+  SimulatorAlreadyRunningError,
+  SimulatorError,
+  SimulatorNotRunningError,
+} from '@persona/simulator';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
@@ -31,6 +36,8 @@ describe('mapError', () => {
       'invalid_transition',
       'manual_confirmation_required',
       'duplicate_intake',
+      'simulator_already_running',
+      'simulator_not_running',
       'domain_error',
       'internal_error',
     ]);
@@ -151,6 +158,28 @@ describe('mapError', () => {
     expect(mapped.body.error.details).toEqual([
       { platform: 'telegram', externalAccountId: 'ext_1', existingRequestId: 'req_1' },
     ]);
+  });
+
+  it('maps a simulator that is already running to 409 simulator_already_running', () => {
+    const mapped = mapError(new SimulatorAlreadyRunningError());
+
+    expect(mapped.statusCode).toBe(409);
+    expect(mapped.body.error.code).toBe('simulator_already_running');
+    expect(mapped.body.error.message).toBe('The simulator is already running');
+  });
+
+  it('maps a simulator that is not running to 409 simulator_not_running', () => {
+    const mapped = mapError(new SimulatorNotRunningError());
+
+    expect(mapped.statusCode).toBe(409);
+    expect(mapped.body.error.code).toBe('simulator_not_running');
+  });
+
+  it('maps any other simulator error to 400 domain_error', () => {
+    const mapped = mapError(new SimulatorError('rule broken'));
+
+    expect(mapped.statusCode).toBe(400);
+    expect(mapped.body.error.code).toBe('domain_error');
   });
 
   it('maps any other intake error to 400 domain_error', () => {

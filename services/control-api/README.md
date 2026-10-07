@@ -10,11 +10,14 @@ A local control service for managing the account portfolio.
 - It does not publish content. For content, `published` only **records and confirms** that a
   publication happened elsewhere, and has to be confirmed explicitly with `confirm: true`.
 - It keeps all data in memory, not in a database. Everything is lost when the process stops.
-- It reuses the domain logic of `@persona/core`, `@persona/persona-engine`, `@persona/publisher`,
-  `@persona/analytics` and `@persona/account-intake`.
+- It reuses the domain logic of `@persona/core`, `@persona/persona-engine`, `@persona/behavior`,
+  `@persona/publisher`, `@persona/analytics`, `@persona/account-intake` and `@persona/simulator`.
 - Accounts can be brought in through a manual intake: a request is submitted with a confirmation of
   ownership, approved by a reviewer and then completed, which adds the account record. Nothing is
   registered on a platform.
+- It can run an activity simulator (`@persona/simulator`) that generates lifecycle events for the
+  accounts that exist, in memory, according to their daily plans. The simulation is local and has
+  nothing to do with real platforms.
 
 ## Run
 
@@ -51,7 +54,7 @@ pnpm --filter @persona/control-api dev
 
 | Вкладка   | Что есть                                                                                                                                                               |
 | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Обзор     | Число аккаунтов, персон, контента и событий; аккаунты по статусам; краткий аналитический снимок                                                                        |
+| Обзор     | Число аккаунтов, персон, контента и событий; аккаунты по статусам; краткий аналитический снимок; панель «Симуляция активности» (см. ниже)                              |
 | Аккаунты  | Таблица и форма создания; карточка аккаунта: смена статуса, назначение персоны, политика, план на день, проверка разрешения действия                                   |
 | Приём     | Список заявок на приём аккаунтов с фильтром по статусу, форма новой заявки, карточка заявки и операции по её статусу (см. ниже)                                        |
 | Персоны   | Таблица, форма создания (темы через запятую, окно активности) и карточка                                                                                               |
@@ -97,6 +100,65 @@ pnpm --filter @persona/control-api dev
 Для списка контента в дашборд добавлен маршрут `GET /content` (`?accountId=`, `?status=`).
 Маршрут `GET /api` возвращает описание сервиса и список маршрутов — раньше это был `GET /`.
 
+**Симуляция активности.** На вкладке «Обзор» есть секция «Симуляция активности»: индикатор состояния
+(запущен — зелёный, остановлен — серый, при ошибке внутри тика — красный), симулированное время,
+число тиков, скорость, интервал тика, число созданных событий, поля «Скорость» (по умолчанию 60) и
+«Интервал тика, мс» (по умолчанию 1000) и кнопки «Запустить» и «Остановить». Ошибки сервиса
+показываются с `error.message` и `error.details`. Подробности — в разделе «Симулятор активности».
+
+**Обновление данных.** Пока симулятор запущен, дашборд каждые 5 секунд перезагружает данные открытой
+вкладки «Обзор», «Аккаунты» или «Аналитика» (и ещё раз сразу после остановки). Обновляются только
+данные — таблицы, карточки, графики; формы не затрагиваются, поэтому введённые значения не
+сбрасываются (в карточке открытого аккаунта данные не обновляются сами: нажмите «Подробнее» ещё
+раз). На всех вкладках с данными есть кнопка «Обновить»; на вкладке «Аналитика» это «Обновить
+снимок». Пока симулятор остановлен, данные обновляются только вручную.
+
+## Симулятор активности
+
+Симулятор создаёт события жизненного цикла для аккаунтов портфеля, не обращаясь ни к каким
+платформам: он берёт дневные планы у движка персон и последовательности действий у движка поведения
+и записывает, что произошло бы, в хранилище событий в памяти. Он не создаёт аккаунты и персоны.
+Подробности и список событий — в [`packages/simulator`](../../packages/simulator/README.md).
+
+Симулятор создан вместе с сервисом, но **не запущен**: его запускают вручную.
+
+| Метод  | Путь                | Что делает                                                                                                    |
+| ------ | ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/simulator/status` | Состояние: `running`, `simulatedTime`, `tickCount`, `speed`, `tickIntervalMs`, `eventsGenerated`, `lastError` |
+| `POST` | `/simulator/start`  | Запускает симулятор и возвращает его состояние                                                                |
+| `POST` | `/simulator/stop`   | Останавливает симулятор и возвращает его состояние                                                            |
+
+Тело `POST /simulator/start` (все поля необязательны):
+
+| Поле             | По умолчанию | Допустимые значения                                            |
+| ---------------- | ------------ | -------------------------------------------------------------- |
+| `speed`          | `60`         | число больше 0, не больше 10000 (1 секунда = `speed` секунд)   |
+| `tickIntervalMs` | `1000`       | целое число от 10 до 60000                                     |
+| `maxTicks`       | нет          | целое положительное число; после стольких тиков остановка сама |
+
+- Повторный `POST /simulator/start` во время работы — `409 simulator_already_running`.
+- **`POST /simulator/stop` при не запущенном симуляторе — `409 simulator_not_running`** (а не
+  молчаливый успех). Это относится и к запуску, который завершился сам по `maxTicks`. Тело
+  `POST /simulator/stop` пустое.
+- Некорректные параметры — `400 validation_error` с указанием поля в `details`; симулятор при этом
+  не запускается.
+- События симулятора доступны в `GET /events` (в `payload` есть `source: 'simulator'`) и попадают в
+  `GET /analytics/snapshot`. Симулятор останавливается при остановке сервиса.
+- Симулированное время начинается с момента запуска, и симулируются только сессии, которые
+  начинаются после него. Если окно активности персон ещё не наступило, увеличьте `speed`, например
+  до 3600 (секунда за час).
+- Аккаунт получает события, только если у него есть персона и статус не `dead`; статусы
+  `connected` и `onboarding` симулятор сам не меняет.
+
+Управлять симулятором можно и из дашборда: вкладка «Обзор», секция «Симуляция активности».
+
+```bash
+curl -X POST http://127.0.0.1:3000/simulator/start -H 'content-type: application/json' \
+  -d '{"speed": 3600}'
+curl http://127.0.0.1:3000/simulator/status
+curl -X POST http://127.0.0.1:3000/simulator/stop
+```
+
 ## Test
 
 ```bash
@@ -138,6 +200,9 @@ number generator are injected, which keeps them deterministic.
 | `POST`  | `/events`                                | Record a lifecycle event                                    |
 | `GET`   | `/events`                                | List events (`accountId`, `type`, `startDate`, `endDate`)   |
 | `GET`   | `/analytics/snapshot`                    | Analytics snapshot (`startDate`, `endDate`, `survivalDays`) |
+| `GET`   | `/simulator/status`                      | State of the activity simulator                             |
+| `POST`  | `/simulator/start`                       | Start the simulator (`speed`, `tickIntervalMs`, `maxTicks`) |
+| `POST`  | `/simulator/stop`                        | Stop the simulator                                          |
 
 ## Behavior worth knowing
 
@@ -172,5 +237,7 @@ Every error has one shape and never contains a stack trace:
 | `invalid_transition`           | 409     | The status change is not allowed                                                                       |
 | `manual_confirmation_required` | 409     | The change has to be confirmed with `confirm: true`                                                    |
 | `duplicate_intake`             | 409     | A completed intake request already exists for the same account                                         |
+| `simulator_already_running`    | 409     | The activity simulator is already running                                                              |
+| `simulator_not_running`        | 409     | The activity simulator is not running, so it cannot be stopped                                         |
 | `domain_error`                 | 409/400 | A domain rule refuses the change, e.g. a content item that is not ready (`details` lists the problems) |
 | `internal_error`               | 500     | Unexpected failure; the cause is only written to the log                                               |
